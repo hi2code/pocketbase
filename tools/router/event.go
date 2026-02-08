@@ -319,6 +319,37 @@ func (e *Event) InternalServerError(message string, errData any) *ApiError {
 	return NewInternalServerError(message, errData)
 }
 
+// i18n ApiError helpers
+// -------------------------------------------------------------------
+
+func (e *Event) ErrorWithContext(status int, message string, errData any) *ApiError {
+	return NewApiErrorWithContext(e.Request.Context(), status, message, errData)
+}
+
+func (e *Event) BadRequestErrorWithContext(message string, errData any) *ApiError {
+	return NewBadRequestErrorWithContext(e.Request.Context(), message, errData)
+}
+
+func (e *Event) NotFoundErrorWithContext(message string, errData any) *ApiError {
+	return NewNotFoundErrorWithContext(e.Request.Context(), message, errData)
+}
+
+func (e *Event) ForbiddenErrorWithContext(message string, errData any) *ApiError {
+	return NewForbiddenErrorWithContext(e.Request.Context(), message, errData)
+}
+
+func (e *Event) UnauthorizedErrorWithContext(message string, errData any) *ApiError {
+	return NewUnauthorizedErrorWithContext(e.Request.Context(), message, errData)
+}
+
+func (e *Event) TooManyRequestsErrorWithContext(message string, errData any) *ApiError {
+	return NewTooManyRequestsErrorWithContext(e.Request.Context(), message, errData)
+}
+
+func (e *Event) InternalServerErrorWithContext(message string, errData any) *ApiError {
+	return NewInternalServerErrorWithContext(e.Request.Context(), message, errData)
+}
+
 // Binders
 // -------------------------------------------------------------------
 

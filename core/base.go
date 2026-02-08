@@ -19,6 +19,7 @@ import (
 	"github.com/pocketbase/pocketbase/tools/cron"
 	"github.com/pocketbase/pocketbase/tools/filesystem"
 	"github.com/pocketbase/pocketbase/tools/hook"
+	"github.com/pocketbase/pocketbase/tools/i18n"
 	"github.com/pocketbase/pocketbase/tools/logger"
 	"github.com/pocketbase/pocketbase/tools/mailer"
 	"github.com/pocketbase/pocketbase/tools/routine"
@@ -423,6 +424,11 @@ func (app *BaseApp) Bootstrap() error {
 		}
 
 		if err := app.ReloadSettings(); err != nil {
+			return err
+		}
+
+		// initialize i18n
+		if err := i18n.Init(); err != nil {
 			return err
 		}
 

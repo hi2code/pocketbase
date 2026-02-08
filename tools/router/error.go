@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"io/fs"
@@ -8,6 +9,7 @@ import (
 	"strings"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
+	"github.com/pocketbase/pocketbase/tools/i18n"
 	"github.com/pocketbase/pocketbase/tools/inflector"
 )
 
@@ -116,6 +118,60 @@ func NewTooManyRequestsError(message string, rawErrData any) *ApiError {
 	return NewApiError(http.StatusTooManyRequests, message, rawErrData)
 }
 
+// NewNotFoundErrorWithContext creates and returns 404 ApiError with i18n support.
+func NewNotFoundErrorWithContext(ctx context.Context, message string, rawErrData any) *ApiError {
+	if message == "" {
+		message = i18n.T(ctx, "error_not_found")
+	}
+
+	return NewApiErrorWithContext(ctx, http.StatusNotFound, message, rawErrData)
+}
+
+// NewBadRequestErrorWithContext creates and returns 400 ApiError with i18n support.
+func NewBadRequestErrorWithContext(ctx context.Context, message string, rawErrData any) *ApiError {
+	if message == "" {
+		message = i18n.T(ctx, "error_bad_request")
+	}
+
+	return NewApiErrorWithContext(ctx, http.StatusBadRequest, message, rawErrData)
+}
+
+// NewForbiddenErrorWithContext creates and returns 403 ApiError with i18n support.
+func NewForbiddenErrorWithContext(ctx context.Context, message string, rawErrData any) *ApiError {
+	if message == "" {
+		message = i18n.T(ctx, "error_forbidden")
+	}
+
+	return NewApiErrorWithContext(ctx, http.StatusForbidden, message, rawErrData)
+}
+
+// NewUnauthorizedErrorWithContext creates and returns 401 ApiError with i18n support.
+func NewUnauthorizedErrorWithContext(ctx context.Context, message string, rawErrData any) *ApiError {
+	if message == "" {
+		message = i18n.T(ctx, "error_unauthorized")
+	}
+
+	return NewApiErrorWithContext(ctx, http.StatusUnauthorized, message, rawErrData)
+}
+
+// NewInternalServerErrorWithContext creates and returns 500 ApiError with i18n support.
+func NewInternalServerErrorWithContext(ctx context.Context, message string, rawErrData any) *ApiError {
+	if message == "" {
+		message = i18n.T(ctx, "error_internal_server")
+	}
+
+	return NewApiErrorWithContext(ctx, http.StatusInternalServerError, message, rawErrData)
+}
+
+// NewTooManyRequestsErrorWithContext creates and returns 429 ApiError with i18n support.
+func NewTooManyRequestsErrorWithContext(ctx context.Context, message string, rawErrData any) *ApiError {
+	if message == "" {
+		message = i18n.T(ctx, "error_too_many_requests")
+	}
+
+	return NewApiErrorWithContext(ctx, http.StatusTooManyRequests, message, rawErrData)
+}
+
 // NewApiError creates and returns new normalized ApiError instance.
 func NewApiError(status int, message string, rawErrData any) *ApiError {
 	if message == "" {
@@ -125,6 +181,36 @@ func NewApiError(status int, message string, rawErrData any) *ApiError {
 	return &ApiError{
 		rawData: rawErrData,
 		Data:    safeErrorsData(rawErrData),
+		Status:  status,
+		Message: strings.TrimSpace(inflector.Sentenize(message)),
+	}
+}
+
+// NewApiErrorWithContext creates and returns new normalized ApiError instance with i18n support.
+func NewApiErrorWithContext(ctx context.Context, status int, message string, rawErrData any) *ApiError {
+	if message == "" {
+		// Use i18n for default messages based on status
+		switch status {
+		case http.StatusNotFound:
+			message = i18n.T(ctx, "error_not_found")
+		case http.StatusBadRequest:
+			message = i18n.T(ctx, "error_bad_request")
+		case http.StatusForbidden:
+			message = i18n.T(ctx, "error_forbidden")
+		case http.StatusUnauthorized:
+			message = i18n.T(ctx, "error_unauthorized")
+		case http.StatusInternalServerError:
+			message = i18n.T(ctx, "error_internal_server")
+		case http.StatusTooManyRequests:
+			message = i18n.T(ctx, "error_too_many_requests")
+		default:
+			message = http.StatusText(status)
+		}
+	}
+
+	return &ApiError{
+		rawData: rawErrData,
+		Data:    safeErrorsDataWithContext(ctx, rawErrData),
 		Status:  status,
 		Message: strings.TrimSpace(inflector.Sentenize(message)),
 	}
@@ -140,6 +226,22 @@ func ToApiError(err error) *ApiError {
 			apiErr = NewNotFoundError("", err)
 		} else {
 			apiErr = NewBadRequestError("", err)
+		}
+	}
+
+	return apiErr
+}
+
+// ToApiErrorWithContext wraps err into ApiError instance (if not already) with i18n support.
+func ToApiErrorWithContext(ctx context.Context, err error) *ApiError {
+	var apiErr *ApiError
+
+	if !errors.As(err, &apiErr) {
+		// no ApiError found -> assign a generic one
+		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, fs.ErrNotExist) {
+			apiErr = NewNotFoundErrorWithContext(ctx, "", err)
+		} else {
+			apiErr = NewBadRequestErrorWithContext(ctx, "", err)
 		}
 	}
 
@@ -214,6 +316,88 @@ func resolveSafeErrorItem(err any) any {
 		// fallback to the default public safe values
 		data["code"] = "validation_invalid_value"
 		data["message"] = "Invalid value."
+	}
+
+	if s, ok := err.(SafeErrorParamsResolver); ok {
+		params := s.Params()
+		if len(params) > 0 {
+			data["params"] = params
+		}
+	}
+
+	if s, ok := err.(SafeErrorResolver); ok {
+		return s.Resolve(data)
+	}
+
+	return data
+}
+
+// -------------------------------------------------------------------
+// i18n support functions
+
+func safeErrorsDataWithContext(ctx context.Context, data any) map[string]any {
+	switch v := data.(type) {
+	case validation.Errors:
+		return resolveSafeErrorsDataWithContext(ctx, v)
+	case error:
+		validationErrors := validation.Errors{}
+		if errors.As(v, &validationErrors) {
+			return resolveSafeErrorsDataWithContext(ctx, validationErrors)
+		}
+		return map[string]any{} // not nil to ensure that is json serialized as object
+	case map[string]validation.Error:
+		return resolveSafeErrorsDataWithContext(ctx, v)
+	case map[string]SafeErrorItem:
+		return resolveSafeErrorsDataWithContext(ctx, v)
+	case map[string]error:
+		return resolveSafeErrorsDataWithContext(ctx, v)
+	case map[string]string:
+		return resolveSafeErrorsDataWithContext(ctx, v)
+	case map[string]any:
+		return resolveSafeErrorsDataWithContext(ctx, v)
+	default:
+		return map[string]any{} // not nil to ensure that is json serialized as object
+	}
+}
+
+func resolveSafeErrorsDataWithContext[T any](ctx context.Context, data map[string]T) map[string]any {
+	result := map[string]any{}
+
+	for name, err := range data {
+		if isNestedError(err) {
+			result[name] = safeErrorsDataWithContext(ctx, err)
+		} else {
+			result[name] = resolveSafeErrorItemWithContext(ctx, err)
+		}
+	}
+
+	return result
+}
+
+// resolveSafeErrorItemWithContext extracts from each validation error its
+// public safe error code and message with i18n support.
+func resolveSafeErrorItemWithContext(ctx context.Context, err any) any {
+	data := map[string]any{}
+
+	if obj, ok := err.(SafeErrorItem); ok {
+		// extract the specific error code and message
+		code := obj.Code()
+		data["code"] = code
+
+		// Use i18n translation for the message
+		defaultMsg := obj.Error()
+		var params map[string]any
+
+		if s, ok := err.(SafeErrorParamsResolver); ok {
+			params = s.Params()
+		}
+
+		translatedMsg := i18n.TranslateError(ctx, code, defaultMsg, params)
+		data["message"] = inflector.Sentenize(translatedMsg)
+	} else {
+		// fallback to the default public safe values
+		data["code"] = "validation_invalid_value"
+		data["message"] = i18n.T(ctx, "validation_invalid_value")
 	}
 
 	if s, ok := err.(SafeErrorParamsResolver); ok {

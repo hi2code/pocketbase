@@ -13,6 +13,7 @@ import (
 
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/hook"
+	"github.com/pocketbase/pocketbase/tools/i18n"
 	"github.com/pocketbase/pocketbase/tools/list"
 	"github.com/pocketbase/pocketbase/tools/router"
 	"github.com/pocketbase/pocketbase/tools/routine"
@@ -44,6 +45,9 @@ const (
 
 	DefaultSecurityHeadersMiddlewarePriority = DefaultRateLimitMiddlewarePriority - 10
 	DefaultSecurityHeadersMiddlewareId       = "pbSecurityHeaders"
+
+	DefaultLanguageDetectionMiddlewarePriority = DefaultRateLimitMiddlewarePriority - 5
+	DefaultLanguageDetectionMiddlewareId       = "pbLanguageDetection"
 
 	DefaultRequireGuestOnlyMiddlewareId                 = "pbRequireGuestOnly"
 	DefaultRequireAuthMiddlewareId                      = "pbRequireAuth"
@@ -441,4 +445,28 @@ func cutStr(str string, max int) string {
 		return str[:max] + "..."
 	}
 	return str
+}
+
+// LanguageDetection middleware detects the language from Accept-Language header
+// and sets it in the request context for i18n support.
+func LanguageDetection() *hook.Handler[*core.RequestEvent] {
+	return &hook.Handler[*core.RequestEvent]{
+		Id:       DefaultLanguageDetectionMiddlewareId,
+		Priority: DefaultLanguageDetectionMiddlewarePriority,
+		Func: func(e *core.RequestEvent) error {
+			// Get Accept-Language header
+			acceptLang := e.Request.Header.Get("Accept-Language")
+
+			// Detect language
+			lang := i18n.DetectLanguage(acceptLang)
+
+			// Set language in context
+			ctx := i18n.SetLanguage(e.Request.Context(), lang)
+
+			// Update request with new context
+			e.Request = e.Request.WithContext(ctx)
+
+			return e.Next()
+		},
+	}
 }
