@@ -490,6 +490,13 @@ type RecordRequestEvent struct {
 	Record *Record
 }
 
+type RecordCRUDRequestEvent struct {
+	hook.Event
+	*RequestEvent
+	baseCollectionEventData
+	Action string // "list", "view", "create", "update", "delete"
+}
+
 type RecordEnrichEvent struct {
 	hook.Event
 	App App

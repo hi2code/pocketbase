@@ -180,6 +180,7 @@ type BaseApp struct {
 	onRecordCreateRequest *hook.Hook[*RecordRequestEvent]
 	onRecordUpdateRequest *hook.Hook[*RecordRequestEvent]
 	onRecordDeleteRequest *hook.Hook[*RecordRequestEvent]
+	onRecordCRUDRequest   *hook.Hook[*RecordCRUDRequestEvent]
 
 	// collection API event hooks
 	onCollectionsListRequest   *hook.Hook[*CollectionsListRequestEvent]
@@ -328,6 +329,7 @@ func (app *BaseApp) initHooks() {
 	app.onRecordCreateRequest = &hook.Hook[*RecordRequestEvent]{}
 	app.onRecordUpdateRequest = &hook.Hook[*RecordRequestEvent]{}
 	app.onRecordDeleteRequest = &hook.Hook[*RecordRequestEvent]{}
+	app.onRecordCRUDRequest = &hook.Hook[*RecordCRUDRequestEvent]{}
 
 	// collection API event hooks
 	app.onCollectionsListRequest = &hook.Hook[*CollectionsListRequestEvent]{}
@@ -1134,6 +1136,10 @@ func (app *BaseApp) OnRecordUpdateRequest(tags ...string) *hook.TaggedHook[*Reco
 
 func (app *BaseApp) OnRecordDeleteRequest(tags ...string) *hook.TaggedHook[*RecordRequestEvent] {
 	return hook.NewTaggedHook(app.onRecordDeleteRequest, tags...)
+}
+
+func (app *BaseApp) OnRecordCRUDRequest(tags ...string) *hook.TaggedHook[*RecordCRUDRequestEvent] {
+	return hook.NewTaggedHook(app.onRecordCRUDRequest, tags...)
 }
 
 // -------------------------------------------------------------------
