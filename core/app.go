@@ -1491,6 +1491,24 @@ type App interface {
 	// triggered and called only if their event data origin matches the tags.
 	OnRecordDeleteRequest(tags ...string) *hook.TaggedHook[*RecordRequestEvent]
 
+	// OnRecordCRUDRequest hook is triggered on each API Record CRUD request
+	// (list, view, create, update, delete).
+	//
+	// This is a unified hook that provides access to the collection rules
+	// (ListRule, ViewRule, CreateRule, UpdateRule, DeleteRule) through the
+	// event.Collection field.
+	//
+	// The event.Action field indicates the type of CRUD operation:
+	// - "list" for list requests
+	// - "view" for view requests
+	// - "create" for create requests
+	// - "update" for update requests
+	// - "delete" for delete requests
+	//
+	// Could be used to implement custom authorization logic or audit logging
+	// across all record operations.
+	OnRecordCRUDRequest(tags ...string) *hook.TaggedHook[*RecordCRUDRequestEvent]
+
 	// ---------------------------------------------------------------
 	// Collection API event hooks
 	// ---------------------------------------------------------------

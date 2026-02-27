@@ -84,8 +84,16 @@ func recordsList(e *core.RequestEvent) error {
 		searchProvider.CountCol("_rowid_")
 	}
 
+	beforeExecEvent := new(core.RecordCRUDRequestEvent)
+	beforeExecEvent.RequestEvent = e
+	beforeExecEvent.Collection = collection
 	records := []*core.Record{}
-	result, err := searchProvider.ParseAndExec(e.Request.URL.Query().Encode(), &records)
+	var result *search.Result
+	err = e.App.OnRecordCRUDRequest().Trigger(beforeExecEvent, func(e *core.RecordCRUDRequestEvent) error {
+		result, err = searchProvider.ParseAndExec(e.Request.URL.Query().Encode(), &records)
+		return err
+	})
+
 	if err != nil {
 		return firstApiError(err, e.BadRequestError("", err))
 	}
