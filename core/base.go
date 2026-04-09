@@ -17,6 +17,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/tools/cron"
+	"github.com/pocketbase/pocketbase/tools/dbutils"
 	"github.com/pocketbase/pocketbase/tools/filesystem"
 	"github.com/pocketbase/pocketbase/tools/hook"
 	"github.com/pocketbase/pocketbase/tools/logger"
@@ -1210,6 +1211,9 @@ func (app *BaseApp) initDataDB() error {
 	app.concurrentDB = concurrentDB
 	app.nonconcurrentDB = nonconcurrentDB
 
+	// keep the SQL dialect in sync with the active DB driver.
+	dbutils.SetDialectByDriver(concurrentDB.DriverName())
+
 	return nil
 }
 
@@ -1363,19 +1367,25 @@ func (app *BaseApp) registerBaseHooks() {
 	})
 
 	app.Cron().Add("__pbDBOptimize__", "0 0 * * *", func() {
-		_, execErr := app.NonconcurrentDB().NewQuery("PRAGMA wal_checkpoint(TRUNCATE)").Execute()
-		if execErr != nil {
-			app.Logger().Warn("Failed to run periodic PRAGMA wal_checkpoint for the main DB", slog.String("error", execErr.Error()))
+		dialect := dbutils.GetDialect()
+
+		if checkpointQuery := dialect.WalCheckpointSQL(); checkpointQuery != "" {
+			_, execErr := app.NonconcurrentDB().NewQuery(checkpointQuery).Execute()
+			if execErr != nil {
+				app.Logger().Warn("Failed to run periodic DB checkpoint for the main DB", slog.String("error", execErr.Error()))
+			}
+
+			_, execErr = app.AuxNonconcurrentDB().NewQuery(checkpointQuery).Execute()
+			if execErr != nil {
+				app.Logger().Warn("Failed to run periodic DB checkpoint for the auxiliary DB", slog.String("error", execErr.Error()))
+			}
 		}
 
-		_, execErr = app.AuxNonconcurrentDB().NewQuery("PRAGMA wal_checkpoint(TRUNCATE)").Execute()
-		if execErr != nil {
-			app.Logger().Warn("Failed to run periodic PRAGMA wal_checkpoint for the auxiliary DB", slog.String("error", execErr.Error()))
-		}
-
-		_, execErr = app.NonconcurrentDB().NewQuery("PRAGMA optimize").Execute()
-		if execErr != nil {
-			app.Logger().Warn("Failed to run periodic PRAGMA optimize", slog.String("error", execErr.Error()))
+		if optimizeQuery := dialect.OptimizeSQL(); optimizeQuery != "" {
+			_, execErr := app.NonconcurrentDB().NewQuery(optimizeQuery).Execute()
+			if execErr != nil {
+				app.Logger().Warn("Failed to run periodic DB optimize", slog.String("error", execErr.Error()))
+			}
 		}
 	})
 

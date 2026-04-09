@@ -144,9 +144,11 @@ func (app *BaseApp) SyncRecordTableSchema(newCollection *Collection, oldCollecti
 
 	// run optimize per the SQLite recommendations
 	// (https://www.sqlite.org/pragma.html#pragma_optimize)
-	_, optimizeErr := app.NonconcurrentDB().NewQuery("PRAGMA optimize").Execute()
-	if optimizeErr != nil {
-		app.Logger().Warn("Failed to run PRAGMA optimize after record table sync", slog.String("error", optimizeErr.Error()))
+	if optimizeQuery := dbutils.GetDialect().OptimizeSQL(); optimizeQuery != "" {
+		_, optimizeErr := app.NonconcurrentDB().NewQuery(optimizeQuery).Execute()
+		if optimizeErr != nil {
+			app.Logger().Warn("Failed to run DB optimize after record table sync", slog.String("error", optimizeErr.Error()))
+		}
 	}
 
 	return nil
@@ -188,7 +190,7 @@ func normalizeSingleVsMultipleFieldChanges(app App, newCollection *Collection, o
 				SQL  string `db:"sql"`
 			}{}
 			err := txApp.DB().Select("name", "sql").
-				From("sqlite_master").
+				From(dbutils.GetDialect().MasterTableName()).
 				AndWhere(dbx.NewExp("sql is not null")).
 				AndWhere(dbx.HashExp{"type": "view"}).
 				All(&views)
