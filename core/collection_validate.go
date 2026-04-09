@@ -559,7 +559,7 @@ func (cv *collectionValidator) checkIndexes(value any) error {
 		// ensure that the index name is not used in another collection
 		var usedTblName string
 		_ = cv.app.ConcurrentDB().Select("tbl_name").
-			From("sqlite_master").
+			From(dbutils.GetDialect().MasterTableName()).
 			AndWhere(dbx.HashExp{"type": "index"}).
 			AndWhere(dbx.NewExp("LOWER([[tbl_name]])!=LOWER({:oldName})", dbx.Params{"oldName": cv.original.Name})).
 			AndWhere(dbx.NewExp("LOWER([[tbl_name]])!=LOWER({:newName})", dbx.Params{"newName": cv.new.Name})).

@@ -2,11 +2,29 @@ package migrations
 
 import (
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/dbutils"
 )
 
 func init() {
 	core.SystemMigrations.Add(&core.Migration{
 		Up: func(txApp core.App) error {
+			if dbutils.GetDialect().Name() == "dm" {
+				_, execErr := txApp.AuxDB().NewQuery(`
+					CREATE TABLE {{_logs}} (
+						[[id]]      VARCHAR(32) PRIMARY KEY NOT NULL,
+						[[level]]   INTEGER DEFAULT 0 NOT NULL,
+						[[message]] VARCHAR(4000) DEFAULT '' NOT NULL,
+						[[data]]    VARCHAR(4000) DEFAULT '{}' NOT NULL,
+						[[created]] VARCHAR(32) DEFAULT '' NOT NULL
+					);
+
+					CREATE INDEX idx_logs_level ON {{_logs}} ([[level]]);
+					CREATE INDEX idx_logs_message ON {{_logs}} ([[message]]);
+					CREATE INDEX idx_logs_created_hour ON {{_logs}} ((SUBSTR([[created]], 1, 13) || ':00:00'));
+				`).Execute()
+				return execErr
+			}
+
 			_, execErr := txApp.AuxDB().NewQuery(`
 				CREATE TABLE IF NOT EXISTS {{_logs}} (
 					[[id]]      TEXT PRIMARY KEY DEFAULT ('r'||lower(hex(randomblob(7)))) NOT NULL,

@@ -5,13 +5,14 @@ import (
 	"fmt"
 
 	"github.com/pocketbase/dbx"
+	"github.com/pocketbase/pocketbase/tools/dbutils"
 )
 
 // TableColumns returns all column names of a single table by its name.
 func (app *BaseApp) TableColumns(tableName string) ([]string, error) {
 	columns := []string{}
 
-	err := app.ConcurrentDB().NewQuery("SELECT name FROM PRAGMA_TABLE_INFO({:tableName})").
+	err := app.ConcurrentDB().NewQuery(dbutils.GetDialect().TableColumnsSQL()).
 		Bind(dbx.Params{"tableName": tableName}).
 		Column(&columns)
 
@@ -34,7 +35,7 @@ type TableInfoRow struct {
 func (app *BaseApp) TableInfo(tableName string) ([]*TableInfoRow, error) {
 	info := []*TableInfoRow{}
 
-	err := app.ConcurrentDB().NewQuery("SELECT * FROM PRAGMA_TABLE_INFO({:tableName})").
+	err := app.ConcurrentDB().NewQuery(dbutils.GetDialect().TableInfoSQL()).
 		Bind(dbx.Params{"tableName": tableName}).
 		All(&info)
 	if err != nil {
@@ -60,7 +61,7 @@ func (app *BaseApp) TableIndexes(tableName string) (map[string]string, error) {
 	}{}
 
 	err := app.ConcurrentDB().Select("name", "sql").
-		From("sqlite_master").
+		From(dbutils.GetDialect().MasterTableName()).
 		AndWhere(dbx.NewExp("sql is not null")).
 		AndWhere(dbx.HashExp{
 			"type":     "index",
@@ -111,7 +112,7 @@ func (app *BaseApp) hasTable(db dbx.Builder, tableName string) bool {
 	var exists int
 
 	err := db.Select("(1)").
-		From("sqlite_schema").
+		From(dbutils.GetDialect().SchemaTableName()).
 		AndWhere(dbx.HashExp{"type": []any{"table", "view"}}).
 		AndWhere(dbx.NewExp("LOWER([[name]])=LOWER({:tableName})", dbx.Params{"tableName": tableName})).
 		Limit(1).
