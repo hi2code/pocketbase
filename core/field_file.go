@@ -11,6 +11,7 @@ import (
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/pocketbase/pocketbase/core/validators"
+	"github.com/pocketbase/pocketbase/tools/dbutils"
 	"github.com/pocketbase/pocketbase/tools/filesystem"
 	"github.com/pocketbase/pocketbase/tools/list"
 	"github.com/pocketbase/pocketbase/tools/types"
@@ -187,6 +188,13 @@ func (f *FileField) IsMultiple() bool {
 
 // ColumnType implements [Field.ColumnType] interface method.
 func (f *FileField) ColumnType(app App) string {
+	if dbutils.GetDialect().Name() != "sqlite" {
+		if f.IsMultiple() {
+			return "TEXT NOT NULL"
+		}
+		return "VARCHAR(255) DEFAULT '' NOT NULL"
+	}
+
 	if f.IsMultiple() {
 		return "JSON DEFAULT '[]' NOT NULL"
 	}

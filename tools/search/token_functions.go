@@ -8,6 +8,7 @@ import (
 
 	"github.com/ganigeorgiev/fexpr"
 	"github.com/pocketbase/dbx"
+	"github.com/pocketbase/pocketbase/tools/dbutils"
 )
 
 var TokenFunctions = map[string]func(
@@ -101,10 +102,29 @@ var TokenFunctions = map[string]func(
 			return nil, fmt.Errorf("[strftime] failed to resolve format argument: %w", err)
 		}
 
+		isSQLite := dbutils.GetDialect().Name() == "sqlite"
+
 		// no further arguments
 		if totalArgs == 1 {
 			formatArgResult.NullFallback = NullFallbackEnforced
-			formatArgResult.Identifier = "strftime(" + formatArgResult.Identifier + ")"
+			if isSQLite {
+				formatArgResult.Identifier = "strftime(" + formatArgResult.Identifier + ")"
+			} else {
+				rawFmt := strings.Trim(args[0].Literal, "'\"")
+				mappedFmt, mapErr := mapStrftimeFormat(rawFmt, dbutils.GetDialect().Name())
+				if mapErr != nil {
+					return nil, mapErr
+				}
+				for k := range formatArgResult.Params {
+					formatArgResult.Params[k] = mappedFmt
+				}
+
+				if dbutils.IsPostgres() {
+					formatArgResult.Identifier = "to_char(CURRENT_TIMESTAMP, " + formatArgResult.Identifier + ")"
+				} else {
+					formatArgResult.Identifier = "DATE_FORMAT(CURRENT_TIMESTAMP, " + formatArgResult.Identifier + ")"
+				}
+			}
 			return formatArgResult, nil
 		}
 
@@ -136,6 +156,10 @@ var TokenFunctions = map[string]func(
 			resolvedModifierArgs[i] = resolved
 		}
 
+		if !isSQLite && len(resolvedModifierArgs) > 0 {
+			return nil, errors.New("[strftime] modifiers are supported only with sqlite dialect")
+		}
+
 		// generating new ResolverResult
 		// -----------------------------------------------------------
 		result := &ResolverResult{
@@ -163,13 +187,35 @@ var TokenFunctions = map[string]func(
 			}
 		}
 
-		result.Identifier = "strftime(" + strings.Join(identifiers, ",") + ")"
+		if isSQLite {
+			result.Identifier = "strftime(" + strings.Join(identifiers, ",") + ")"
+		} else {
+			rawFmt := strings.Trim(args[0].Literal, "'\"")
+			mappedFmt, mapErr := mapStrftimeFormat(rawFmt, dbutils.GetDialect().Name())
+			if mapErr != nil {
+				return nil, mapErr
+			}
+			for k := range formatArgResult.Params {
+				result.Params[k] = mappedFmt
+			}
+
+			if dbutils.IsPostgres() {
+				result.Identifier = "to_char((" + timeValueArgResult.Identifier + ")::timestamp, " + formatArgResult.Identifier + ")"
+			} else {
+				result.Identifier = "DATE_FORMAT(" + timeValueArgResult.Identifier + ", " + formatArgResult.Identifier + ")"
+			}
+		}
 
 		if timeValueArgResult.MultiMatchSubQuery != nil {
-			// replace the regular time-value identifier with the multi-match one
-			identifiers[1] = timeValueArgResult.MultiMatchSubQuery.ValueIdentifier
 			result.MultiMatchSubQuery = timeValueArgResult.MultiMatchSubQuery
-			result.MultiMatchSubQuery.ValueIdentifier = "strftime(" + strings.Join(identifiers, ",") + ")"
+			if isSQLite {
+				identifiers[1] = timeValueArgResult.MultiMatchSubQuery.ValueIdentifier
+				result.MultiMatchSubQuery.ValueIdentifier = "strftime(" + strings.Join(identifiers, ",") + ")"
+			} else if dbutils.IsPostgres() {
+				result.MultiMatchSubQuery.ValueIdentifier = "to_char((" + timeValueArgResult.MultiMatchSubQuery.ValueIdentifier + ")::timestamp, " + formatArgResult.Identifier + ")"
+			} else {
+				result.MultiMatchSubQuery.ValueIdentifier = "DATE_FORMAT(" + timeValueArgResult.MultiMatchSubQuery.ValueIdentifier + ", " + formatArgResult.Identifier + ")"
+			}
 
 			err = concatUniqueParams(result.MultiMatchSubQuery.Params, result.Params)
 			if err != nil {
@@ -179,6 +225,48 @@ var TokenFunctions = map[string]func(
 
 		return result, nil
 	},
+}
+
+func mapStrftimeFormat(sqliteFormat, dialect string) (string, error) {
+	type pair struct {
+		old string
+		new string
+	}
+
+	var replacements []pair
+	switch dialect {
+	case "pg":
+		replacements = []pair{
+			{"%Y", "YYYY"},
+			{"%m", "MM"},
+			{"%d", "DD"},
+			{"%H", "HH24"},
+			{"%M", "MI"},
+			{"%S", "SS"},
+			{"%f", "US"},
+		}
+	default:
+		replacements = []pair{
+			{"%Y", "%Y"},
+			{"%m", "%m"},
+			{"%d", "%d"},
+			{"%H", "%H"},
+			{"%M", "%i"},
+			{"%S", "%s"},
+			{"%f", "%f"},
+		}
+	}
+
+	out := sqliteFormat
+	for _, r := range replacements {
+		out = strings.ReplaceAll(out, r.old, r.new)
+	}
+
+	if dialect == "pg" && strings.Contains(out, "%") {
+		return "", fmt.Errorf("[strftime] unsupported format for %s dialect: %s", dialect, sqliteFormat)
+	}
+
+	return out, nil
 }
 
 func concatUniqueParams(destParams, newParams dbx.Params) error {

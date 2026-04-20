@@ -56,18 +56,64 @@ func (app *BaseApp) TableInfo(tableName string) ([]*TableInfoRow, error) {
 // Note: This method doesn't return an error on nonexisting table.
 func (app *BaseApp) TableIndexes(tableName string) (map[string]string, error) {
 	indexes := []struct {
-		Name string
-		Sql  string
+		Name string `db:"name"`
+		Sql  string `db:"sql"`
 	}{}
 
-	err := app.ConcurrentDB().Select("name", "sql").
-		From(dbutils.GetDialect().MasterTableName()).
-		AndWhere(dbx.NewExp("sql is not null")).
-		AndWhere(dbx.HashExp{
-			"type":     "index",
-			"tbl_name": tableName,
-		}).
-		All(&indexes)
+	dialectName := dbutils.GetDialect().Name()
+
+	var err error
+	switch dialectName {
+	case "mysql", "dm":
+		mysqlIndexes := []struct {
+			Name string `db:"name"`
+			Sql  string `db:"index_sql"`
+		}{}
+
+		err = app.ConcurrentDB().NewQuery(`
+			SELECT index_name AS name, index_name AS index_sql
+			FROM information_schema.statistics
+			WHERE table_schema = DATABASE()
+			  AND table_name = {:tableName}
+			  AND index_name <> 'PRIMARY'
+			GROUP BY index_name
+		`).
+			Bind(dbx.Params{"tableName": tableName}).
+			All(&mysqlIndexes)
+		if err == nil {
+			indexes = make([]struct {
+				Name string `db:"name"`
+				Sql  string `db:"sql"`
+			}, len(mysqlIndexes))
+			for i, idx := range mysqlIndexes {
+				indexes[i] = struct {
+					Name string `db:"name"`
+					Sql  string `db:"sql"`
+				}{
+					Name: idx.Name,
+					Sql:  idx.Sql,
+				}
+			}
+		}
+	case "pg":
+		err = app.ConcurrentDB().NewQuery(`
+			SELECT indexname AS name, indexdef AS sql
+			FROM pg_indexes
+			WHERE schemaname = current_schema()
+			  AND tablename = {:tableName}
+		`).
+			Bind(dbx.Params{"tableName": tableName}).
+			All(&indexes)
+	default:
+		err = app.ConcurrentDB().Select("name", "sql").
+			From(dbutils.GetDialect().MasterTableName()).
+			AndWhere(dbx.NewExp("sql is not null")).
+			AndWhere(dbx.HashExp{
+				"type":     "index",
+				"tbl_name": tableName,
+			}).
+			All(&indexes)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -111,14 +157,48 @@ func (app *BaseApp) AuxHasTable(tableName string) bool {
 func (app *BaseApp) hasTable(db dbx.Builder, tableName string) bool {
 	var exists int
 
-	err := db.Select("(1)").
-		From(dbutils.GetDialect().SchemaTableName()).
-		AndWhere(dbx.HashExp{"type": []any{"table", "view"}}).
-		AndWhere(dbx.NewExp("LOWER([[name]])=LOWER({:tableName})", dbx.Params{"tableName": tableName})).
-		Limit(1).
-		Row(&exists)
+	dialectName := dbutils.GetDialect().Name()
 
-	return err == nil && exists > 0
+	var err error
+
+	switch dialectName {
+	case "mysql", "dm":
+		err = db.NewQuery(`
+			SELECT (1)
+			FROM information_schema.tables
+			WHERE table_schema = DATABASE()
+			  AND table_type IN ('BASE TABLE', 'VIEW')
+			  AND LOWER(table_name) = LOWER({:tableName})
+			LIMIT 1
+		`).
+			Bind(dbx.Params{"tableName": tableName}).
+			Row(&exists)
+	case "pg":
+		err = db.NewQuery(`
+			SELECT (1)
+			FROM information_schema.tables
+			WHERE table_schema = current_schema()
+			  AND table_type IN ('BASE TABLE', 'VIEW')
+			  AND LOWER(table_name) = LOWER({:tableName})
+			LIMIT 1
+		`).
+			Bind(dbx.Params{"tableName": tableName}).
+			Row(&exists)
+	default:
+		err = db.Select("(1)").
+			From(dbutils.GetDialect().SchemaTableName()).
+			AndWhere(dbx.HashExp{"type": []any{"table", "view"}}).
+			AndWhere(dbx.NewExp("LOWER([[name]])=LOWER({:tableName})", dbx.Params{"tableName": tableName})).
+			Limit(1).
+			Row(&exists)
+	}
+
+	if err != nil {
+		app.Logger().Debug("hasTable probe failed", "dialect", dialectName, "table", tableName, "error", err)
+		return false
+	}
+
+	return exists > 0
 }
 
 // Vacuum executes VACUUM on the data.db in order to reclaim unused data db disk space.
@@ -132,6 +212,10 @@ func (app *BaseApp) AuxVacuum() error {
 }
 
 func (app *BaseApp) vacuum(db dbx.Builder) error {
+	if dbutils.GetDialect().Name() != "sqlite" {
+		return nil
+	}
+
 	_, err := db.NewQuery("VACUUM").Execute()
 
 	return err

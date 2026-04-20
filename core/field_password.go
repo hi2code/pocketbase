@@ -9,6 +9,7 @@ import (
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/pocketbase/pocketbase/core/validators"
+	"github.com/pocketbase/pocketbase/tools/dbutils"
 	"github.com/spf13/cast"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -138,6 +139,10 @@ func (f *PasswordField) SetHidden(hidden bool) {
 
 // ColumnType implements [Field.ColumnType] interface method.
 func (f *PasswordField) ColumnType(app App) string {
+	if dbutils.GetDialect().Name() != "sqlite" {
+		return "VARCHAR(255) DEFAULT '' NOT NULL"
+	}
+
 	return "TEXT DEFAULT '' NOT NULL"
 }
 

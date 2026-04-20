@@ -305,6 +305,11 @@ func dropCollectionIndexes(app App, collection *Collection) error {
 	}
 
 	return app.RunInTransaction(func(txApp App) error {
+		existingIndexes, err := txApp.TableIndexes(collection.Name)
+		if err != nil {
+			return err
+		}
+
 		for _, raw := range collection.Indexes {
 			parsed := dbutils.ParseIndex(raw)
 
@@ -312,7 +317,11 @@ func dropCollectionIndexes(app App, collection *Collection) error {
 				continue
 			}
 
-			_, err := txApp.DB().NewQuery(fmt.Sprintf("DROP INDEX IF EXISTS [[%s]]", parsed.IndexName)).Execute()
+			if _, ok := existingIndexes[parsed.IndexName]; !ok {
+				continue
+			}
+
+			_, err = txApp.DB().DropIndex(collection.Name, parsed.IndexName).Execute()
 			if err != nil {
 				return err
 			}

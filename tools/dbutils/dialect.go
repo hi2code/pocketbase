@@ -38,6 +38,10 @@ var (
 func init() {
 	RegisterDialect("sqlite", sqliteDialect{})
 	RegisterDialect("sqlite3", sqliteDialect{})
+	RegisterDialect("mysql", mysqlDialect{})
+	RegisterDialect("pg", pgsqlDialect{})
+	RegisterDialect("postgres", pgsqlDialect{})
+	RegisterDialect("postgresql", pgsqlDialect{})
 }
 
 // RegisterDialect registers or overrides a SQL dialect for a driver name.
@@ -76,6 +80,48 @@ func SetDialectByDriver(driver string) {
 	}
 
 	active = sqliteDialect{}
+}
+
+func IsMySQLLike() bool {
+	name := GetDialect().Name()
+	return name == "mysql" || name == "dm"
+}
+
+func IsPostgres() bool {
+	return GetDialect().Name() == "pg"
+}
+
+func ConcatExpr(parts ...string) string {
+	if len(parts) == 0 {
+		return "''"
+	}
+	if len(parts) == 1 {
+		return parts[0]
+	}
+
+	if IsMySQLLike() {
+		return "CONCAT(" + strings.Join(parts, ", ") + ")"
+	}
+
+	return "(" + strings.Join(parts, " || ") + ")"
+}
+
+func MigrationAppliedOrderExpr(column string) string {
+	switch GetDialect().Name() {
+	case "pg":
+		return fmt.Sprintf("LPAD(COALESCE(%s::text, ''), 16, '0')", column)
+	default:
+		return fmt.Sprintf("substr(%s||'0000000000000000', 0, 17)", column)
+	}
+}
+
+func CaseInsensitiveEqualsExpr(column, param string) string {
+	switch GetDialect().Name() {
+	case "sqlite":
+		return fmt.Sprintf("%s = %s COLLATE NOCASE", column, param)
+	default:
+		return fmt.Sprintf("LOWER(%s) = LOWER(%s)", column, param)
+	}
 }
 
 type sqliteDialect struct{}

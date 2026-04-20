@@ -7,6 +7,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/pocketbase/dbx"
+	"github.com/pocketbase/pocketbase/tools/dbutils"
 	"github.com/pocketbase/pocketbase/tools/osutils"
 	"github.com/spf13/cast"
 )
@@ -248,14 +249,44 @@ func (r *MigrationsRunner) initMigrationsTable() error {
 		return nil // already inited
 	}
 
-	rawQuery := fmt.Sprintf(
-		"CREATE TABLE IF NOT EXISTS {{%s}} (file VARCHAR(255) PRIMARY KEY NOT NULL, applied INTEGER NOT NULL)",
-		r.tableName,
-	)
+	rawQuery := ""
+	switch dbutils.GetDialect().Name() {
+	case "sqlite":
+		rawQuery = fmt.Sprintf(
+			"CREATE TABLE IF NOT EXISTS {{%s}} (file VARCHAR(255) PRIMARY KEY NOT NULL, applied INTEGER NOT NULL)",
+			r.tableName,
+		)
+	case "dm":
+		if r.app.HasTable(r.tableName) {
+			r.inited = true
+			return nil
+		}
+
+		rawQuery = fmt.Sprintf(
+			"CREATE TABLE {{%s}} ([[file]] VARCHAR(255) PRIMARY KEY NOT NULL, [[applied]] BIGINT NOT NULL)",
+			r.tableName,
+		)
+	default:
+		rawQuery = fmt.Sprintf(
+			"CREATE TABLE IF NOT EXISTS {{%s}} (file VARCHAR(255) PRIMARY KEY NOT NULL, applied BIGINT NOT NULL)",
+			r.tableName,
+		)
+	}
 
 	_, err := r.app.DB().NewQuery(rawQuery).Execute()
 
 	if err == nil {
+		switch dbutils.GetDialect().Name() {
+		case "mysql", "dm":
+			_, _ = r.app.DB().NewQuery(
+				fmt.Sprintf("ALTER TABLE {{%s}} MODIFY COLUMN [[applied]] BIGINT NOT NULL", r.tableName),
+			).Execute()
+		case "pg":
+			_, _ = r.app.DB().NewQuery(
+				fmt.Sprintf("ALTER TABLE {{%s}} ALTER COLUMN [[applied]] TYPE BIGINT", r.tableName),
+			).Execute()
+		}
+
 		r.inited = true
 	}
 
@@ -304,7 +335,7 @@ func (r *MigrationsRunner) lastAppliedMigrations(limit int) ([]string, error) {
 		Where(dbx.Not(dbx.HashExp{"applied": nil})).
 		AndWhere(dbx.HashExp{"file": names}).
 		// unify microseconds and seconds applied time for backward compatibility
-		OrderBy("substr(applied||'0000000000000000', 0, 17) DESC").
+		OrderBy(dbutils.MigrationAppliedOrderExpr("applied") + " DESC").
 		AndOrderBy("file DESC").
 		Limit(int64(limit)).
 		Column(&files)

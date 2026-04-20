@@ -5,6 +5,7 @@ import (
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/pocketbase/pocketbase/core/validators"
+	"github.com/pocketbase/pocketbase/tools/dbutils"
 	"github.com/pocketbase/pocketbase/tools/types"
 )
 
@@ -103,6 +104,10 @@ func (f *DateField) SetHidden(hidden bool) {
 
 // ColumnType implements [Field.ColumnType] interface method.
 func (f *DateField) ColumnType(app App) string {
+	if dbutils.GetDialect().Name() != "sqlite" {
+		return "VARCHAR(32) DEFAULT '' NOT NULL"
+	}
+
 	return "TEXT DEFAULT '' NOT NULL"
 }
 

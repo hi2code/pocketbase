@@ -115,7 +115,7 @@ func (idx Index) Build() string {
 
 	str.WriteString(")")
 
-	if idx.Where != "" {
+	if idx.Where != "" && !IsMySQLLike() {
 		str.WriteString(" WHERE ")
 		str.WriteString(idx.Where)
 	}

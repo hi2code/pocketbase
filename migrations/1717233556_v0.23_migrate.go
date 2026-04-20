@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/dbutils"
 	"github.com/pocketbase/pocketbase/tools/security"
 	"github.com/pocketbase/pocketbase/tools/types"
 	"github.com/spf13/cast"
@@ -23,6 +25,12 @@ func init() {
 		// note: mfas and authOrigins tables are available only with v0.23
 		hasUpgraded := txApp.HasTable(core.CollectionNameMFAs) && txApp.HasTable(core.CollectionNameAuthOrigins)
 		if hasUpgraded {
+			return nil
+		}
+
+		// fresh init schema doesn't have the legacy _params.key column and
+		// doesn't need this migration.
+		if cols, err := txApp.TableColumns("_params"); err == nil && !slices.Contains(cols, "key") {
 			return nil
 		}
 
@@ -494,8 +502,13 @@ func migrateOldCollections(txApp core.App, oldSettings *oldSettingsModel) error 
 
 			// add system field indexes
 			// ---
+			usernameIdx := fmt.Sprintf("CREATE UNIQUE INDEX `_%s_username_idx` ON `%s` (`username`)", c.Id, c.Name)
+			if dbutils.GetDialect().Name() == "sqlite" {
+				usernameIdx = fmt.Sprintf("CREATE UNIQUE INDEX `_%s_username_idx` ON `%s` (username COLLATE NOCASE)", c.Id, c.Name)
+			}
+
 			c.Indexes = append(types.JSONArray[string]{
-				fmt.Sprintf("CREATE UNIQUE INDEX `_%s_username_idx` ON `%s` (username COLLATE NOCASE)", c.Id, c.Name),
+				usernameIdx,
 				fmt.Sprintf("CREATE UNIQUE INDEX `_%s_email_idx` ON `%s` (`email`) WHERE `email` != ''", c.Id, c.Name),
 				fmt.Sprintf("CREATE UNIQUE INDEX `_%s_tokenKey_idx` ON `%s` (`tokenKey`)", c.Id, c.Name),
 			}, c.Indexes...)

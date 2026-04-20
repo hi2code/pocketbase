@@ -11,6 +11,7 @@ import (
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core/validators"
+	"github.com/pocketbase/pocketbase/tools/dbutils"
 	"github.com/pocketbase/pocketbase/tools/security"
 	"github.com/spf13/cast"
 )
@@ -156,6 +157,22 @@ func (f *TextField) SetHidden(hidden bool) {
 
 // ColumnType implements [Field.ColumnType] interface method.
 func (f *TextField) ColumnType(app App) string {
+	if dbutils.GetDialect().Name() != "sqlite" {
+		if f.PrimaryKey {
+			return "VARCHAR(32) PRIMARY KEY NOT NULL"
+		}
+
+		if f.Max > 0 && f.Max <= 1024 {
+			return fmt.Sprintf("VARCHAR(%d) DEFAULT '' NOT NULL", f.Max)
+		}
+
+		if f.Max <= 0 {
+			return "VARCHAR(255) DEFAULT '' NOT NULL"
+		}
+
+		return "TEXT NOT NULL"
+	}
+
 	if f.PrimaryKey {
 		// note: the default is just a last resort fallback to avoid empty
 		// string values in case the record was inserted with raw sql and
@@ -202,7 +219,7 @@ func (f *TextField) ValidateValue(ctx context.Context, app App, record *Record) 
 				err := app.ConcurrentDB().
 					Select("(1)").
 					From(record.TableName()).
-					Where(dbx.NewExp("id = {:id} COLLATE NOCASE", dbx.Params{"id": newVal})).
+					Where(dbx.NewExp(dbutils.CaseInsensitiveEqualsExpr("id", "{:id}"), dbx.Params{"id": newVal})).
 					Limit(1).
 					Row(&exists)
 				if exists > 0 || (err != nil && !errors.Is(err, sql.ErrNoRows)) {

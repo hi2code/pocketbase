@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/pocketbase/dbx"
+	"github.com/pocketbase/pocketbase/tools/dbutils"
 	"github.com/pocketbase/pocketbase/tools/list"
 )
 
@@ -38,7 +39,12 @@ func (app *BaseApp) FindAllCollections(collectionTypes ...string) ([]*Collection
 		q.AndWhere(dbx.In("type", list.ToInterfaceSlice(types)...))
 	}
 
-	err := q.OrderBy("rowid ASC").All(&collections)
+	orderBy := "rowid ASC"
+	if dbutils.GetDialect().Name() != "sqlite" {
+		orderBy = "id ASC"
+	}
+
+	err := q.OrderBy(orderBy).All(&collections)
 	if err != nil {
 		return nil, err
 	}
