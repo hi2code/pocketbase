@@ -150,6 +150,13 @@ func (f *RelationField) IsMultiple() bool {
 
 // ColumnType implements [Field.ColumnType] interface method.
 func (f *RelationField) ColumnType(app App) string {
+	if useMySQLLikeColumnTypes() {
+		if f.IsMultiple() {
+			return "JSON DEFAULT NULL"
+		}
+		return "VARCHAR(255) DEFAULT '' NOT NULL"
+	}
+
 	if f.IsMultiple() {
 		return "JSON DEFAULT '[]' NOT NULL"
 	}

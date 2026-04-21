@@ -100,11 +100,14 @@ func (app *BaseApp) SyncRecordTableSchema(newCollection *Collection, oldCollecti
 			// This way we are always doing 1 more rename operation but it provides better less ambiguous experience.
 
 			if oldField == nil {
-				tempName := field.GetName() + security.PseudorandomString(5)
-				toRename[tempName] = field.GetName()
+				columnName := field.GetName()
+				if dbutils.GetDialect().Name() != "dm" {
+					columnName = field.GetName() + security.PseudorandomString(5)
+					toRename[columnName] = field.GetName()
+				}
 
 				// add
-				_, err := txApp.DB().AddColumn(newTableName, tempName, field.ColumnType(txApp)).Execute()
+				_, err := txApp.DB().AddColumn(newTableName, columnName, field.ColumnType(txApp)).Execute()
 				if err != nil {
 					return fmt.Errorf("failed to add column %s - %w", field.GetName(), err)
 				}
@@ -312,7 +315,12 @@ func dropCollectionIndexes(app App, collection *Collection) error {
 				continue
 			}
 
-			_, err := txApp.DB().NewQuery(fmt.Sprintf("DROP INDEX IF EXISTS [[%s]]", parsed.IndexName)).Execute()
+			dropIndexQuery := fmt.Sprintf("DROP INDEX IF EXISTS [[%s]]", parsed.IndexName)
+			if dbutils.GetDialect().Name() == "mysql" {
+				dropIndexQuery = fmt.Sprintf("DROP INDEX [[%s]] ON {{%s}}", parsed.IndexName, parsed.TableName)
+			}
+
+			_, err := txApp.DB().NewQuery(dropIndexQuery).Execute()
 			if err != nil {
 				return err
 			}

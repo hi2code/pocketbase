@@ -8,21 +8,81 @@ import (
 func init() {
 	core.SystemMigrations.Add(&core.Migration{
 		Up: func(txApp core.App) error {
+			if dbutils.GetDialect().Name() == "mysql" {
+				var logsTableCount int
+				if err := txApp.AuxDB().NewQuery(`
+					SELECT COUNT(1)
+					FROM information_schema.TABLES
+					WHERE TABLE_SCHEMA = DATABASE()
+					  AND TABLE_NAME = '_logs'
+				`).Row(&logsTableCount); err != nil {
+					return err
+				}
+				if logsTableCount > 0 {
+					return nil
+				}
+
+				if _, err := txApp.AuxDB().NewQuery(`
+					CREATE TABLE IF NOT EXISTS {{_logs}} (
+						[[id]]      VARCHAR(32) PRIMARY KEY NOT NULL,
+						[[level]]   INTEGER DEFAULT 0 NOT NULL,
+						[[message]] TEXT NOT NULL,
+						[[data]]    JSON DEFAULT NULL,
+						[[created]] VARCHAR(32) DEFAULT '' NOT NULL
+					)
+				`).Execute(); err != nil {
+					return err
+				}
+
+				for _, query := range []string{
+					`CREATE INDEX idx_logs_level ON {{_logs}} ([[level]])`,
+					`CREATE INDEX idx_logs_message ON {{_logs}} ([[message]](255))`,
+					`CREATE INDEX idx_logs_created_hour ON {{_logs}} ([[created]])`,
+				} {
+					if _, err := txApp.AuxDB().NewQuery(query).Execute(); err != nil {
+						return err
+					}
+				}
+
+				return nil
+			}
+
 			if dbutils.GetDialect().Name() == "dm" {
-				_, execErr := txApp.AuxDB().NewQuery(`
-					CREATE TABLE {{_logs}} (
+				var logsTableCount int
+				if err := txApp.AuxDB().NewQuery(`
+					SELECT COUNT(1)
+					FROM USER_TABLES
+					WHERE UPPER(TABLE_NAME) = UPPER('_logs')
+				`).Row(&logsTableCount); err != nil {
+					return err
+				}
+				if logsTableCount > 0 {
+					return nil
+				}
+
+				if _, err := txApp.AuxDB().NewQuery(`
+					CREATE TABLE [[_logs]] (
 						[[id]]      VARCHAR(32) PRIMARY KEY NOT NULL,
 						[[level]]   INTEGER DEFAULT 0 NOT NULL,
 						[[message]] VARCHAR(4000) DEFAULT '' NOT NULL,
 						[[data]]    VARCHAR(4000) DEFAULT '{}' NOT NULL,
 						[[created]] VARCHAR(32) DEFAULT '' NOT NULL
-					);
+					)
+				`).Execute(); err != nil {
+					return err
+				}
 
-					CREATE INDEX idx_logs_level ON {{_logs}} ([[level]]);
-					CREATE INDEX idx_logs_message ON {{_logs}} ([[message]]);
-					CREATE INDEX idx_logs_created_hour ON {{_logs}} ((SUBSTR([[created]], 1, 13) || ':00:00'));
-				`).Execute()
-				return execErr
+				for _, query := range []string{
+					`CREATE INDEX idx_logs_level ON [[_logs]] ([[level]])`,
+					`CREATE INDEX idx_logs_message ON [[_logs]] ([[message]])`,
+					`CREATE INDEX idx_logs_created_hour ON [[_logs]] ([[created]])`,
+				} {
+					if _, err := txApp.AuxDB().NewQuery(query).Execute(); err != nil {
+						return err
+					}
+				}
+
+				return nil
 			}
 
 			_, execErr := txApp.AuxDB().NewQuery(`

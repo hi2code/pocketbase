@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/pocketbase/pocketbase/tools/dbutils"
 	"github.com/pocketbase/pocketbase/tools/search"
 )
 
@@ -47,6 +48,22 @@ func TestSortFieldBuildExpr(t *testing.T) {
 				t.Fatalf("Expected expression %v, got %v", s.expectExpression, result)
 			}
 		})
+	}
+}
+
+func TestSortFieldBuildExprMySQLRowIDFallback(t *testing.T) {
+	resolver := search.NewSimpleFieldResolver("created")
+
+	dbutils.SetDialectByDriver("mysql")
+	defer dbutils.SetDialectByDriver("sqlite")
+
+	result, err := (&search.SortField{Name: "@rowid", Direction: search.SortDesc}).BuildExpr(resolver)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if result != "[[created]] DESC" {
+		t.Fatalf("expected MySQL rowid fallback to created, got %q", result)
 	}
 }
 

@@ -156,6 +156,13 @@ func (f *TextField) SetHidden(hidden bool) {
 
 // ColumnType implements [Field.ColumnType] interface method.
 func (f *TextField) ColumnType(app App) string {
+	if useMySQLLikeColumnTypes() {
+		if f.PrimaryKey {
+			return "VARCHAR(32) PRIMARY KEY NOT NULL"
+		}
+		return "VARCHAR(255) DEFAULT '' NOT NULL"
+	}
+
 	if f.PrimaryKey {
 		// note: the default is just a last resort fallback to avoid empty
 		// string values in case the record was inserted with raw sql and

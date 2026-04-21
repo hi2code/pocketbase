@@ -111,6 +111,34 @@ func (app *BaseApp) AuxHasTable(tableName string) bool {
 func (app *BaseApp) hasTable(db dbx.Builder, tableName string) bool {
 	var exists int
 
+	if dbutils.GetDialect().Name() == "mysql" {
+		err := db.NewQuery(`
+			SELECT 1
+			FROM information_schema.TABLES
+			WHERE TABLE_SCHEMA = DATABASE()
+			  AND LOWER(TABLE_NAME) = LOWER({:tableName})
+			  AND TABLE_TYPE IN ('BASE TABLE', 'VIEW')
+			LIMIT 1
+		`).Bind(dbx.Params{"tableName": tableName}).Row(&exists)
+
+		return err == nil && exists > 0
+	}
+
+	if dbutils.GetDialect().Name() == "dm" {
+		err := db.NewQuery(`
+			SELECT 1
+			FROM (
+				SELECT TABLE_NAME AS name FROM USER_TABLES
+				UNION ALL
+				SELECT VIEW_NAME AS name FROM USER_VIEWS
+			)
+			WHERE LOWER(name) = LOWER({:tableName})
+			LIMIT 1
+		`).Bind(dbx.Params{"tableName": tableName}).Row(&exists)
+
+		return err == nil && exists > 0
+	}
+
 	err := db.Select("(1)").
 		From(dbutils.GetDialect().SchemaTableName()).
 		AndWhere(dbx.HashExp{"type": []any{"table", "view"}}).

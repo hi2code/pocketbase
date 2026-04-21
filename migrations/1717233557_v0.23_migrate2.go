@@ -2,15 +2,18 @@ package migrations
 
 import (
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/dbutils"
 )
 
 // note: this migration will be deleted in future version
 
 func init() {
 	core.SystemMigrations.Register(func(txApp core.App) error {
-		_, err := txApp.DB().NewQuery("CREATE INDEX IF NOT EXISTS idx__collections_type on {{_collections}} ([[type]]);").Execute()
-		if err != nil {
-			return err
+		if dbutils.GetDialect().Name() != "mysql" {
+			_, err := txApp.DB().NewQuery("CREATE INDEX IF NOT EXISTS idx__collections_type on {{_collections}} ([[type]]);").Execute()
+			if err != nil {
+				return err
+			}
 		}
 
 		// reset mfas and otps delete rule
