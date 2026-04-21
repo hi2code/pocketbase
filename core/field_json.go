@@ -108,6 +108,10 @@ func (f *JSONField) SetHidden(hidden bool) {
 
 // ColumnType implements [Field.ColumnType] interface method.
 func (f *JSONField) ColumnType(app App) string {
+	if useMySQLLikeColumnTypes() {
+		return "JSON DEFAULT NULL"
+	}
+
 	return "JSON DEFAULT NULL"
 }
 

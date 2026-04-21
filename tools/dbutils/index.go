@@ -1,6 +1,7 @@
 package dbutils
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -75,8 +76,16 @@ func (idx Index) Build() string {
 		str.WriteString("\n  ")
 	}
 
+	columns := idx.Columns
+	if isMySQLLikeDialect() && idx.Unique && len(idx.Columns) == 1 && isNotEmptyWhere(idx.Where, idx.Columns[0].Name) {
+		colName := strings.Trim(idx.Columns[0].Name, "`\"'[]\r\n\t\f\v ")
+		columns = []IndexColumn{{
+			Name: fmt.Sprintf("(CASE WHEN `%s` != '' THEN `%s` ELSE NULL END)", colName, colName),
+		}}
+	}
+
 	var hasCol bool
-	for _, col := range idx.Columns {
+	for _, col := range columns {
 		trimmedColName := strings.TrimSpace(col.Name)
 		if trimmedColName == "" {
 			continue
@@ -109,18 +118,45 @@ func (idx Index) Build() string {
 		hasCol = true
 	}
 
-	if hasCol && len(idx.Columns) > 1 {
+	if hasCol && len(columns) > 1 {
 		str.WriteString("\n")
 	}
 
 	str.WriteString(")")
 
-	if idx.Where != "" {
+	if idx.Where != "" && !isMySQLLikeDialect() {
 		str.WriteString(" WHERE ")
 		str.WriteString(idx.Where)
 	}
 
 	return str.String()
+}
+
+func isMySQLLikeDialect() bool {
+	switch GetDialect().Name() {
+	case "mysql", "dm":
+		return true
+	default:
+		return false
+	}
+}
+
+func isNotEmptyWhere(where string, column string) bool {
+	if strings.TrimSpace(where) == "" {
+		return false
+	}
+
+	normalize := func(s string) string {
+		s = strings.ToLower(strings.TrimSpace(s))
+		s = strings.ReplaceAll(s, "`", "")
+		s = strings.ReplaceAll(s, "\"", "")
+		s = strings.ReplaceAll(s, "'", "")
+		s = strings.ReplaceAll(s, " ", "")
+		return s
+	}
+
+	column = strings.Trim(column, "`\"'[]\r\n\t\f\v ")
+	return normalize(where) == normalize(column+" != ''")
 }
 
 // ParseIndex parses the provided "CREATE INDEX" SQL string into Index struct.

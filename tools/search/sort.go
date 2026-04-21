@@ -3,6 +3,8 @@ package search
 import (
 	"fmt"
 	"strings"
+
+	"github.com/pocketbase/pocketbase/tools/dbutils"
 )
 
 const (
@@ -31,6 +33,9 @@ func (s *SortField) BuildExpr(fieldResolver FieldResolver) (string, error) {
 
 	// special case for the builtin SQLite rowid column
 	if s.Name == rowidSortKey {
+		if dialect := dbutils.GetDialect().Name(); dialect == "mysql" || dialect == "dm" {
+			return fmt.Sprintf("[[created]] %s", s.Direction), nil
+		}
 		return fmt.Sprintf("[[_rowid_]] %s", s.Direction), nil
 	}
 

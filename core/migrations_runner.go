@@ -7,6 +7,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/pocketbase/dbx"
+	"github.com/pocketbase/pocketbase/tools/dbutils"
 	"github.com/pocketbase/pocketbase/tools/osutils"
 	"github.com/spf13/cast"
 )
@@ -236,6 +237,32 @@ func (r *MigrationsRunner) RemoveMissingAppliedMigrations() error {
 		names[i] = migration.File
 	}
 
+	if dbutils.GetDialect().Name() == "dm" {
+		if len(names) == 0 {
+			_, err := r.app.DB().NewQuery(
+				fmt.Sprintf("DELETE FROM {{%s}}", r.tableName),
+			).Execute()
+			return err
+		}
+
+		placeholders := make([]string, len(names))
+		params := dbx.Params{}
+		for i, name := range names {
+			key := fmt.Sprintf("file%d", i)
+			placeholders[i] = "{:" + key + "}"
+			params[key] = name
+		}
+
+		_, err := r.app.DB().NewQuery(
+			fmt.Sprintf(
+				"DELETE FROM {{%s}} WHERE FILE NOT IN (%s)",
+				r.tableName,
+				strings.Join(placeholders, ","),
+			),
+		).Bind(params).Execute()
+		return err
+	}
+
 	_, err := r.app.DB().Delete(r.tableName, dbx.Not(dbx.HashExp{
 		"file": names,
 	})).Execute()
@@ -248,12 +275,30 @@ func (r *MigrationsRunner) initMigrationsTable() error {
 		return nil // already inited
 	}
 
+	appliedType := "INTEGER"
+	switch dbutils.GetDialect().Name() {
+	case "mysql", "dm":
+		appliedType = "BIGINT"
+	}
+
 	rawQuery := fmt.Sprintf(
-		"CREATE TABLE IF NOT EXISTS {{%s}} (file VARCHAR(255) PRIMARY KEY NOT NULL, applied INTEGER NOT NULL)",
+		"CREATE TABLE IF NOT EXISTS {{%s}} (file VARCHAR(255) PRIMARY KEY NOT NULL, applied %s NOT NULL)",
 		r.tableName,
+		appliedType,
 	)
 
 	_, err := r.app.DB().NewQuery(rawQuery).Execute()
+	if err != nil {
+		return err
+	}
+
+	if appliedType == "BIGINT" {
+		alterQuery := fmt.Sprintf("ALTER TABLE {{%s}} MODIFY [[applied]] BIGINT NOT NULL", r.tableName)
+		if dbutils.GetDialect().Name() == "dm" {
+			alterQuery = fmt.Sprintf("ALTER TABLE {{%s}} MODIFY applied BIGINT NOT NULL", r.tableName)
+		}
+		_, err = r.app.DB().NewQuery(alterQuery).Execute()
+	}
 
 	if err == nil {
 		r.inited = true
@@ -265,6 +310,13 @@ func (r *MigrationsRunner) initMigrationsTable() error {
 func (r *MigrationsRunner) isMigrationApplied(txApp App, file string) bool {
 	var exists int
 
+	if dbutils.GetDialect().Name() == "dm" {
+		err := txApp.DB().NewQuery(
+			fmt.Sprintf("SELECT 1 FROM {{%s}} WHERE FILE = {:file} LIMIT 1", r.tableName),
+		).Bind(dbx.Params{"file": file}).Row(&exists)
+		return err == nil && exists > 0
+	}
+
 	err := txApp.DB().Select("(1)").
 		From(r.tableName).
 		Where(dbx.HashExp{"file": file}).
@@ -275,6 +327,16 @@ func (r *MigrationsRunner) isMigrationApplied(txApp App, file string) bool {
 }
 
 func (r *MigrationsRunner) saveAppliedMigration(txApp App, file string) error {
+	if dbutils.GetDialect().Name() == "dm" {
+		_, err := txApp.DB().NewQuery(
+			fmt.Sprintf("INSERT INTO {{%s}} (FILE, APPLIED) VALUES ({:file}, {:applied})", r.tableName),
+		).Bind(dbx.Params{
+			"file":    file,
+			"applied": time.Now().UnixMicro(),
+		}).Execute()
+		return err
+	}
+
 	_, err := txApp.DB().Insert(r.tableName, dbx.Params{
 		"file":    file,
 		"applied": time.Now().UnixMicro(),
@@ -284,6 +346,13 @@ func (r *MigrationsRunner) saveAppliedMigration(txApp App, file string) error {
 }
 
 func (r *MigrationsRunner) saveRevertedMigration(txApp App, file string) error {
+	if dbutils.GetDialect().Name() == "dm" {
+		_, err := txApp.DB().NewQuery(
+			fmt.Sprintf("DELETE FROM {{%s}} WHERE FILE = {:file}", r.tableName),
+		).Bind(dbx.Params{"file": file}).Execute()
+		return err
+	}
+
 	_, err := txApp.DB().Delete(r.tableName, dbx.HashExp{"file": file}).Execute()
 
 	return err
@@ -297,6 +366,33 @@ func (r *MigrationsRunner) lastAppliedMigrations(limit int) ([]string, error) {
 	names := make([]any, len(loadedMigrations))
 	for i, migration := range loadedMigrations {
 		names[i] = migration.File
+	}
+
+	if dbutils.GetDialect().Name() == "dm" {
+		placeholders := make([]string, len(names))
+		params := dbx.Params{"limit": limit}
+		for i, name := range names {
+			key := fmt.Sprintf("file%d", i)
+			placeholders[i] = "{:" + key + "}"
+			params[key] = name
+		}
+
+		query := fmt.Sprintf(
+			`SELECT FILE
+			FROM {{%s}}
+			WHERE APPLIED IS NOT NULL
+			  AND FILE IN (%s)
+			ORDER BY SUBSTR(TO_CHAR(APPLIED) || '0000000000000000', 1, 16) DESC, FILE DESC
+			LIMIT {:limit}`,
+			r.tableName,
+			strings.Join(placeholders, ","),
+		)
+
+		err := r.app.DB().NewQuery(query).Bind(params).Column(&files)
+		if err != nil {
+			return nil, err
+		}
+		return files, nil
 	}
 
 	err := r.app.DB().Select("file").

@@ -5,6 +5,7 @@ import (
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/pocketbase/pocketbase/core/validators"
+	"github.com/pocketbase/pocketbase/tools/dbutils"
 	"github.com/spf13/cast"
 )
 
@@ -93,6 +94,12 @@ func (f *BoolField) SetHidden(hidden bool) {
 
 // ColumnType implements [Field.ColumnType] interface method.
 func (f *BoolField) ColumnType(app App) string {
+	if useMySQLLikeColumnTypes() {
+		if dbutils.GetDialect().Name() == "dm" {
+			return "SMALLINT DEFAULT 0 NOT NULL"
+		}
+		return "TINYINT(1) DEFAULT 0 NOT NULL"
+	}
 	return "BOOLEAN DEFAULT FALSE NOT NULL"
 }
 

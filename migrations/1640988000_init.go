@@ -6,6 +6,7 @@ import (
 	"runtime"
 
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/dbutils"
 	"github.com/pocketbase/pocketbase/tools/types"
 )
 
@@ -34,7 +35,76 @@ func init() {
 
 		// -----------------------------------------------------------
 
-		_, execerr := txApp.DB().NewQuery(`
+		if dbutils.GetDialect().Name() == "mysql" {
+			exists, err := mysqlTableExists(txApp, "_collections")
+			if err != nil {
+				return fmt.Errorf("_collections exec error: %w", err)
+			}
+			if !exists {
+				if _, execerr := txApp.DB().NewQuery(`
+					CREATE TABLE {{_collections}} (
+						[[id]]         VARCHAR(32) PRIMARY KEY NOT NULL,
+						[[system]]     BOOLEAN DEFAULT FALSE NOT NULL,
+						[[type]]       VARCHAR(64) DEFAULT 'base' NOT NULL,
+						[[name]]       VARCHAR(255) UNIQUE NOT NULL,
+						[[fields]]     JSON DEFAULT NULL,
+						[[indexes]]    JSON DEFAULT NULL,
+						[[listRule]]   TEXT DEFAULT NULL,
+						[[viewRule]]   TEXT DEFAULT NULL,
+						[[createRule]] TEXT DEFAULT NULL,
+						[[updateRule]] TEXT DEFAULT NULL,
+						[[deleteRule]] TEXT DEFAULT NULL,
+						[[options]]    JSON DEFAULT NULL,
+						[[created]]    VARCHAR(32) DEFAULT '' NOT NULL,
+						[[updated]]    VARCHAR(32) DEFAULT '' NOT NULL
+					)
+				`).Execute(); execerr != nil {
+					return fmt.Errorf("_collections exec error: %w", execerr)
+				}
+
+				_, execerr := txApp.DB().NewQuery(`CREATE INDEX idx__collections_type on {{_collections}} ([[type]])`).Execute()
+				if execerr != nil {
+					return fmt.Errorf("_collections exec error: %w", execerr)
+				}
+			}
+		} else if dbutils.GetDialect().Name() == "dm" {
+			exists, err := dmTableExists(txApp, "_collections")
+			if err != nil {
+				return fmt.Errorf("_collections exec error: %w", err)
+			}
+			if !exists {
+				if _, execerr := txApp.DB().NewQuery(`
+					CREATE TABLE [[_collections]] (
+						[[id]]         VARCHAR(32) PRIMARY KEY NOT NULL,
+						[[system]]     SMALLINT DEFAULT 0 NOT NULL,
+						[[type]]       VARCHAR(64) DEFAULT 'base' NOT NULL,
+						[[name]]       VARCHAR(255) NOT NULL,
+						[[fields]]     CLOB,
+						[[indexes]]    CLOB,
+						[[listRule]]   CLOB,
+						[[viewRule]]   CLOB,
+						[[createRule]] CLOB,
+						[[updateRule]] CLOB,
+						[[deleteRule]] CLOB,
+						[[options]]    CLOB,
+						[[created]]    VARCHAR(32) DEFAULT '' NOT NULL,
+						[[updated]]    VARCHAR(32) DEFAULT '' NOT NULL
+					)
+				`).Execute(); execerr != nil {
+					return fmt.Errorf("_collections exec error: %w", execerr)
+				}
+
+				for _, query := range []string{
+					`CREATE UNIQUE INDEX idx__collections_name ON [[_collections]] ([[name]])`,
+					`CREATE INDEX idx__collections_type ON [[_collections]] ([[type]])`,
+				} {
+					if _, execerr := txApp.DB().NewQuery(query).Execute(); execerr != nil {
+						return fmt.Errorf("_collections exec error: %w", execerr)
+					}
+				}
+			}
+		} else {
+			_, execerr := txApp.DB().NewQuery(`
 			CREATE TABLE {{_collections}} (
 				[[id]]         TEXT PRIMARY KEY DEFAULT ('r'||lower(hex(randomblob(7)))) NOT NULL,
 				[[system]]     BOOLEAN DEFAULT FALSE NOT NULL,
@@ -54,8 +124,9 @@ func init() {
 
 			CREATE INDEX IF NOT EXISTS idx__collections_type on {{_collections}} ([[type]]);
 		`).Execute()
-		if execerr != nil {
-			return fmt.Errorf("_collections exec error: %w", execerr)
+			if execerr != nil {
+				return fmt.Errorf("_collections exec error: %w", execerr)
+			}
 		}
 
 		if err := createMFAsCollection(txApp); err != nil {
@@ -105,6 +176,48 @@ func init() {
 }
 
 func createParamsTable(txApp core.App) error {
+	if dbutils.GetDialect().Name() == "mysql" {
+		exists, err := mysqlTableExists(txApp, "_params")
+		if err != nil {
+			return err
+		}
+		if exists {
+			return nil
+		}
+
+		_, execErr := txApp.DB().NewQuery(`
+			CREATE TABLE {{_params}} (
+				[[id]]      VARCHAR(32) PRIMARY KEY NOT NULL,
+				[[value]]   JSON DEFAULT NULL,
+				[[created]] VARCHAR(32) DEFAULT '' NOT NULL,
+				[[updated]] VARCHAR(32) DEFAULT '' NOT NULL
+			)
+		`).Execute()
+
+		return execErr
+	}
+
+	if dbutils.GetDialect().Name() == "dm" {
+		exists, err := dmTableExists(txApp, "_params")
+		if err != nil {
+			return err
+		}
+		if exists {
+			return nil
+		}
+
+		_, execErr := txApp.DB().NewQuery(`
+			CREATE TABLE [[_params]] (
+				[[id]]      VARCHAR(32) PRIMARY KEY NOT NULL,
+				[[value]]   VARCHAR(4000),
+				[[created]] VARCHAR(32) DEFAULT '' NOT NULL,
+				[[updated]] VARCHAR(32) DEFAULT '' NOT NULL
+			)
+		`).Execute()
+
+		return execErr
+	}
+
 	_, execErr := txApp.DB().NewQuery(`
 		CREATE TABLE {{_params}} (
 			[[id]]      TEXT PRIMARY KEY DEFAULT ('r'||lower(hex(randomblob(7)))) NOT NULL,
@@ -115,6 +228,29 @@ func createParamsTable(txApp core.App) error {
 	`).Execute()
 
 	return execErr
+}
+
+func mysqlTableExists(txApp core.App, tableName string) (bool, error) {
+	var count int
+	err := txApp.DB().NewQuery(`
+		SELECT COUNT(1)
+		FROM information_schema.TABLES
+		WHERE TABLE_SCHEMA = DATABASE()
+		  AND TABLE_NAME = {:tableName}
+	`).Bind(map[string]any{"tableName": tableName}).Row(&count)
+
+	return count > 0, err
+}
+
+func dmTableExists(txApp core.App, tableName string) (bool, error) {
+	var count int
+	err := txApp.DB().NewQuery(`
+		SELECT COUNT(1)
+		FROM USER_TABLES
+		WHERE UPPER(TABLE_NAME) = UPPER({:tableName})
+	`).Bind(map[string]any{"tableName": tableName}).Row(&count)
+
+	return count > 0, err
 }
 
 func createMFAsCollection(txApp core.App) error {

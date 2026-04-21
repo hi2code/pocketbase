@@ -8,12 +8,18 @@ import (
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/pocketbase/pocketbase/core/validators"
+	"github.com/pocketbase/pocketbase/tools/dbutils"
 	"github.com/pocketbase/pocketbase/tools/list"
 )
 
 var fieldNameRegex = regexp.MustCompile(`^\w+$`)
 
 const maxSafeJSONInt int64 = 1<<53 - 1
+
+func useMySQLLikeColumnTypes() bool {
+	name := dbutils.GetDialect().Name()
+	return name == "mysql" || name == "dm"
+}
 
 // Commonly used field names.
 const (

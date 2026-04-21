@@ -106,6 +106,10 @@ func (f *URLField) SetHidden(hidden bool) {
 
 // ColumnType implements [Field.ColumnType] interface method.
 func (f *URLField) ColumnType(app App) string {
+	if useMySQLLikeColumnTypes() {
+		return "VARCHAR(2048) DEFAULT '' NOT NULL"
+	}
+
 	return "TEXT DEFAULT '' NOT NULL"
 }
 

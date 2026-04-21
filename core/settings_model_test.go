@@ -113,6 +113,27 @@ func TestSettingsMarshalJSON(t *testing.T) {
 	}
 }
 
+func TestSettingsDBExportPlainValueIsString(t *testing.T) {
+	app, _ := tests.NewTestApp()
+	defer app.Cleanup()
+
+	app.Settings().Meta.AppName = "dm-plain-text"
+
+	exported, err := app.Settings().DBExport(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	value, ok := exported["value"].(string)
+	if !ok {
+		t.Fatalf("Expected exported settings value to be string, got %T", exported["value"])
+	}
+
+	if !strings.Contains(value, `"appName":"dm-plain-text"`) {
+		t.Fatalf("Expected exported settings JSON payload, got %q", value)
+	}
+}
+
 func TestSettingsValidate(t *testing.T) {
 	t.Parallel()
 

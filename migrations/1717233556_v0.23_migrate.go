@@ -20,6 +20,10 @@ import (
 
 func init() {
 	core.SystemMigrations.Register(func(txApp core.App) error {
+		if !hasOldSettingsParamsKeyColumn(txApp) {
+			return nil
+		}
+
 		// note: mfas and authOrigins tables are available only with v0.23
 		hasUpgraded := txApp.HasTable(core.CollectionNameMFAs) && txApp.HasTable(core.CollectionNameAuthOrigins)
 		if hasUpgraded {
@@ -66,6 +70,21 @@ func init() {
 
 		return nil
 	}, nil)
+}
+
+// -------------------------------------------------------------------
+
+func hasOldSettingsParamsKeyColumn(txApp core.App) bool {
+	columns, err := txApp.TableColumns("_params")
+	if err != nil {
+		return false
+	}
+	for _, column := range columns {
+		if strings.EqualFold(column, "key") {
+			return true
+		}
+	}
+	return false
 }
 
 // -------------------------------------------------------------------

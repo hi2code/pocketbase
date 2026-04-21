@@ -106,6 +106,10 @@ func (f *EmailField) SetHidden(hidden bool) {
 
 // ColumnType implements [Field.ColumnType] interface method.
 func (f *EmailField) ColumnType(app App) string {
+	if useMySQLLikeColumnTypes() {
+		return "VARCHAR(320) DEFAULT '' NOT NULL"
+	}
+
 	return "TEXT DEFAULT '' NOT NULL"
 }
 
