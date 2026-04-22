@@ -166,7 +166,7 @@ func TestMFAHasExpired(t *testing.T) {
 	}{
 		{0 * time.Minute, true},
 		{3 * time.Minute, true},
-		{5 * time.Minute, true},
+		{4*time.Minute + 59*time.Second, true},
 		{6 * time.Minute, false},
 	}
 
