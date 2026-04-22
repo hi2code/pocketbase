@@ -480,23 +480,39 @@ func (app *BaseApp) registerRecordHooks() {
 //
 // Note that this method is intended to load and Scan data from a database row result.
 func newRecordFromNullStringMap(collection *Collection, data dbx.NullStringMap) (*Record, error) {
+	rawData := make(map[string]any, len(data))
+	for key, value := range data {
+		if value.Valid {
+			rawData[key] = value.String
+		} else {
+			rawData[key] = nil
+		}
+	}
+
+	return newRecordFromScannedValueMap(collection, rawData)
+}
+
+// newRecordFromScannedValueMap initializes a single new Record model
+// with data loaded from a scanned database row result.
+func newRecordFromScannedValueMap(collection *Collection, data map[string]any) (*Record, error) {
 	record := NewRecord(collection)
 
 	var fieldName string
 	for _, field := range collection.Fields {
 		fieldName = field.GetName()
 
-		nullString, ok := data[fieldName]
-
 		var value any
 		var err error
 
-		if ok && nullString.Valid {
-			value, err = field.PrepareValue(record, nullString.String)
-		} else {
-			value, err = field.PrepareValue(record, nil)
+		raw, ok := data[fieldName]
+		if !ok {
+			raw = nil
+		}
+		if bytes, isBytes := raw.([]byte); isBytes {
+			raw = string(bytes)
 		}
 
+		value, err = field.PrepareValue(record, raw)
 		if err != nil {
 			return nil, err
 		}
@@ -525,6 +541,20 @@ func newRecordsFromNullStringMaps(collection *Collection, rows []dbx.NullStringM
 	var err error
 	for i, row := range rows {
 		result[i], err = newRecordFromNullStringMap(collection, row)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return result, nil
+}
+
+func newRecordsFromScannedValueMaps(collection *Collection, rows []map[string]any) ([]*Record, error) {
+	result := make([]*Record, len(rows))
+
+	var err error
+	for i, row := range rows {
+		result[i], err = newRecordFromScannedValueMap(collection, row)
 		if err != nil {
 			return nil, err
 		}

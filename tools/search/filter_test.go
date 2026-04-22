@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/pocketbase/dbx"
+	"github.com/pocketbase/pocketbase/tools/dbutils"
 	"github.com/pocketbase/pocketbase/tools/search"
 )
 
@@ -176,6 +177,25 @@ func TestFilterDataBuildExpr(t *testing.T) {
 				t.Fatalf("[%s] Pattern %v don't match with expression: \n%v", s.name, expectPattern, rawSql)
 			}
 		})
+	}
+}
+
+func TestFilterDataBuildExprMySQLLikeNonEqualEmptyString(t *testing.T) {
+	resolver := search.NewSimpleFieldResolver("test1")
+
+	dbutils.SetDialectByDriver("dm")
+	defer dbutils.SetDialectByDriver("sqlite")
+
+	expr, err := search.FilterData("test1 != ''").BuildExpr(resolver)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rawSQL := expr.Build(&dbx.DB{}, dbx.Params{})
+
+	expected := "(([[test1]] != '' AND [[test1]] IS NOT NULL))"
+	if rawSQL != expected {
+		t.Fatalf("expected %q, got %q", expected, rawSQL)
 	}
 }
 

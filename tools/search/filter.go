@@ -9,6 +9,7 @@ import (
 
 	"github.com/ganigeorgiev/fexpr"
 	"github.com/pocketbase/dbx"
+	"github.com/pocketbase/pocketbase/tools/dbutils"
 	"github.com/pocketbase/pocketbase/tools/security"
 	"github.com/pocketbase/pocketbase/tools/store"
 	"github.com/spf13/cast"
@@ -327,15 +328,16 @@ func resolveToken(token fexpr.Token, fieldResolver FieldResolver) (*ResolverResu
 // with a seek while the COALESCE will induce a table scan.
 func resolveEqualExpr(equal bool, left, right *ResolverResult) dbx.Expression {
 	equalOp := "="
+	compareOp := equalOp
 	nullEqualOp := "IS"
 	concatOp := "OR"
 	nullExpr := "IS NULL"
 	if !equal {
-		// always use `IS NOT` instead of `!=` because direct non-equal comparisons
-		// to nullable column values that are actually NULL yields to NULL instead of TRUE, eg.:
-		// `'example' != nullableColumn` -> NULL even if nullableColumn row value is NULL
-		equalOp = "IS NOT"
-		nullEqualOp = equalOp
+		compareOp = "IS NOT"
+		if dialect := dbutils.GetDialect().Name(); dialect == "mysql" || dialect == "dm" {
+			compareOp = "!="
+		}
+		nullEqualOp = "IS NOT"
 		concatOp = "AND"
 		nullExpr = "IS NOT NULL"
 	}
@@ -359,7 +361,7 @@ func resolveEqualExpr(equal bool, left, right *ResolverResult) dbx.Expression {
 
 	// both operands are empty
 	if isLeftEmpty && isRightEmpty {
-		return dbx.NewExp(fmt.Sprintf("'' %s ''", equalOp), mergeParams(left.Params, right.Params))
+		return dbx.NewExp(fmt.Sprintf("'' %s ''", compareOp), mergeParams(left.Params, right.Params))
 	}
 
 	// direct compare since at least one of the operands is known to be non-empty
@@ -374,7 +376,7 @@ func resolveEqualExpr(equal bool, left, right *ResolverResult) dbx.Expression {
 			rightIdentifier = "''"
 		}
 		return dbx.NewExp(
-			fmt.Sprintf("%s %s %s", leftIdentifier, equalOp, rightIdentifier),
+			fmt.Sprintf("%s %s %s", leftIdentifier, compareOp, rightIdentifier),
 			mergeParams(left.Params, right.Params),
 		)
 	}
@@ -383,7 +385,7 @@ func resolveEqualExpr(equal bool, left, right *ResolverResult) dbx.Expression {
 	// "" IS NOT b AND b IS NOT NULL
 	if isLeftEmpty {
 		return dbx.NewExp(
-			fmt.Sprintf("('' %s %s %s %s %s)", equalOp, right.Identifier, concatOp, right.Identifier, nullExpr),
+			fmt.Sprintf("('' %s %s %s %s %s)", compareOp, right.Identifier, concatOp, right.Identifier, nullExpr),
 			mergeParams(left.Params, right.Params),
 		)
 	}
@@ -392,7 +394,7 @@ func resolveEqualExpr(equal bool, left, right *ResolverResult) dbx.Expression {
 	// a IS NOT "" AND a IS NOT NULL
 	if isRightEmpty {
 		return dbx.NewExp(
-			fmt.Sprintf("(%s %s '' %s %s %s)", left.Identifier, equalOp, concatOp, left.Identifier, nullExpr),
+			fmt.Sprintf("(%s %s '' %s %s %s)", left.Identifier, compareOp, concatOp, left.Identifier, nullExpr),
 			mergeParams(left.Params, right.Params),
 		)
 	}
@@ -402,7 +404,7 @@ func resolveEqualExpr(equal bool, left, right *ResolverResult) dbx.Expression {
 		fmt.Sprintf(
 			"COALESCE(%s, '') %s COALESCE(%s, '')",
 			left.Identifier,
-			equalOp,
+			compareOp,
 			right.Identifier,
 		),
 		mergeParams(left.Params, right.Params),

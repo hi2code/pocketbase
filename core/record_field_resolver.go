@@ -133,7 +133,7 @@ func (r *RecordFieldResolver) UpdateQuery(query *dbx.SelectQuery) error {
 
 		for _, join := range r.joins {
 			query.LeftJoin(
-				(join.TableName + " " + join.TableAlias),
+				r.joinTableExpr(join.TableName, join.TableAlias),
 				join.On,
 			)
 		}
@@ -176,7 +176,7 @@ func (r *RecordFieldResolver) updateQueryWithCollectionListRule(c *Collection, t
 
 		for _, j := range cloneR.joins {
 			query.LeftJoin(
-				(j.TableName + " " + j.TableAlias),
+				r.joinTableExpr(j.TableName, j.TableAlias),
 				j.On,
 			)
 		}
@@ -373,6 +373,15 @@ func (r *RecordFieldResolver) loadCollection(collectionNameOrId string) (*Collec
 	}
 
 	return getCollectionByModelOrIdentifier(r.app, collectionNameOrId)
+}
+
+func (r *RecordFieldResolver) joinTableExpr(tableName string, tableAlias string) string {
+	c, _ := r.loadCollection(tableName)
+	if c != nil {
+		return "{{" + c.Name + "}} " + tableAlias
+	}
+
+	return tableName + " " + tableAlias
 }
 
 func (r *RecordFieldResolver) registerJoin(tableName string, tableAlias string, on dbx.Expression) error {

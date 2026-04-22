@@ -49,7 +49,7 @@ func (m *MultiMatchSubquery) Build(db *dbx.DB, params dbx.Params) string {
 			mergedJoins.WriteString(" ")
 		}
 		mergedJoins.WriteString("LEFT JOIN ")
-		mergedJoins.WriteString(db.QuoteTableName(j.TableName))
+		mergedJoins.WriteString(quoteTableOrPlaceholder(db, j.TableName))
 		mergedJoins.WriteString(" ")
 		mergedJoins.WriteString(db.QuoteTableName(j.TableAlias))
 		if j.On != nil {
@@ -61,10 +61,18 @@ func (m *MultiMatchSubquery) Build(db *dbx.DB, params dbx.Params) string {
 	return fmt.Sprintf(
 		`SELECT %s as [[multiMatchValue]] FROM %s %s %s WHERE %s = %s`,
 		db.QuoteColumnName(m.ValueIdentifier),
-		db.QuoteTableName(m.FromTableName),
+		quoteTableOrPlaceholder(db, m.FromTableName),
 		db.QuoteTableName(m.FromTableAlias),
 		mergedJoins.String(),
 		db.QuoteColumnName(m.FromTableAlias+".id"),
 		db.QuoteColumnName(m.TargetTableAlias+".id"),
 	)
+}
+
+func quoteTableOrPlaceholder(db *dbx.DB, tableName string) string {
+	if strings.HasPrefix(tableName, "{{") && strings.HasSuffix(tableName, "}}") {
+		return tableName
+	}
+
+	return db.QuoteTableName(tableName)
 }

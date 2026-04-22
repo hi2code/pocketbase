@@ -148,7 +148,7 @@ func (r *runner) prepare() {
 		TargetTableAlias: r.activeTableAlias,
 		Params:           dbx.Params{},
 	}
-	r.multiMatch.FromTableName = inflector.Columnify(r.activeCollectionName)
+	r.multiMatch.FromTableName = collectionTableRef(r.activeCollectionName)
 	r.multiMatch.FromTableAlias = "__mm_" + r.activeTableAlias
 	r.multiMatchActiveTableAlias = r.multiMatch.FromTableAlias
 	r.withMultiMatch = false
@@ -186,7 +186,7 @@ func (r *runner) processCollectionField() (*search.ResolverResult, error) {
 	// join the collection to the multi-match subquery
 	r.multiMatchActiveTableAlias = "__mm_" + r.activeTableAlias
 	r.multiMatch.Joins = append(r.multiMatch.Joins, &search.Join{
-		TableName:  inflector.Columnify(collection.Name),
+		TableName:  collectionTableRef(collection.Name),
 		TableAlias: r.multiMatchActiveTableAlias,
 	})
 
@@ -601,7 +601,7 @@ func (r *runner) processActiveProps() (*search.ResolverResult, error) {
 				r.multiMatch.Joins = append(
 					r.multiMatch.Joins,
 					&search.Join{
-						TableName:  newCollectionName,
+						TableName:  collectionTableRef(newCollectionName),
 						TableAlias: newTableAlias2,
 						On:         dbx.NewExp(fmt.Sprintf("[[%s.%s]] = [[%s.id]]", newTableAlias2, cleanBackFieldName, r.multiMatchActiveTableAlias)),
 					},
@@ -611,7 +611,7 @@ func (r *runner) processActiveProps() (*search.ResolverResult, error) {
 				r.multiMatch.Joins = append(
 					r.multiMatch.Joins,
 					&search.Join{
-						TableName:  newCollectionName,
+						TableName:  collectionTableRef(newCollectionName),
 						TableAlias: newTableAlias2,
 						On: dbx.NewExp(fmt.Sprintf(
 							"[[%s.id]] IN (SELECT [[%s.value]] FROM %s {{%s}})",
@@ -705,7 +705,7 @@ func (r *runner) processActiveProps() (*search.ResolverResult, error) {
 			r.multiMatch.Joins = append(
 				r.multiMatch.Joins,
 				&search.Join{
-					TableName:  inflector.Columnify(newCollectionName),
+					TableName:  collectionTableRef(newCollectionName),
 					TableAlias: newTableAlias2,
 					On:         dbx.NewExp(fmt.Sprintf("[[%s.id]] = [[%s]]", newTableAlias2, prefixedFieldName2)),
 				},
@@ -719,7 +719,7 @@ func (r *runner) processActiveProps() (*search.ResolverResult, error) {
 					TableAlias: jeAlias2,
 				},
 				&search.Join{
-					TableName:  inflector.Columnify(newCollectionName),
+					TableName:  collectionTableRef(newCollectionName),
 					TableAlias: newTableAlias2,
 					On:         dbx.NewExp(fmt.Sprintf("[[%s.id]] = [[%s.value]]", newTableAlias2, jeAlias2)),
 				},
@@ -731,6 +731,16 @@ func (r *runner) processActiveProps() (*search.ResolverResult, error) {
 	}
 
 	return nil, fmt.Errorf("failed to resolve field %q", r.fieldName)
+}
+
+func collectionTableRef(name string) string {
+	cleanName := inflector.Columnify(name)
+	switch dbutils.GetDialect().Name() {
+	case "mysql", "dm":
+		return "{{" + cleanName + "}}"
+	default:
+		return cleanName
+	}
 }
 
 func (r *runner) finalizeActivePropsProcessing(collection *Collection, prop string, propDepth int) (*search.ResolverResult, error) {

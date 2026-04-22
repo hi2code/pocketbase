@@ -35,7 +35,9 @@ func (app *BaseApp) RecordQuery(collectionModelOrIdentifier any) *dbx.SelectQuer
 		tableName = "@@__invalidCollectionModelOrIdentifier"
 	}
 
-	query := app.ConcurrentDB().Select(app.ConcurrentDB().QuoteSimpleColumnName(tableName) + ".*").From(tableName)
+	query := app.ConcurrentDB().
+		Select("{{" + tableName + "}}.*").
+		From("{{" + tableName + "}}")
 
 	// in case of an error attach a new context and cancel it immediately with the error
 	if collectionErr != nil {
@@ -53,7 +55,7 @@ func (app *BaseApp) RecordQuery(collectionModelOrIdentifier any) *dbx.SelectQuer
 
 				switch v := a.(type) {
 				case *Record:
-					record, err := resolveRecordOneHook(collection, op)
+					record, err := resolveRecordOneHook(q, collection)
 					if err != nil {
 						return err
 					}
@@ -62,7 +64,7 @@ func (app *BaseApp) RecordQuery(collectionModelOrIdentifier any) *dbx.SelectQuer
 
 					return nil
 				case RecordProxy:
-					record, err := resolveRecordOneHook(collection, op)
+					record, err := resolveRecordOneHook(q, collection)
 					if err != nil {
 						return err
 					}
@@ -80,7 +82,7 @@ func (app *BaseApp) RecordQuery(collectionModelOrIdentifier any) *dbx.SelectQuer
 
 				switch v := sliceA.(type) {
 				case *[]*Record:
-					records, err := resolveRecordAllHook(collection, op)
+					records, err := resolveRecordAllHook(q, collection)
 					if err != nil {
 						return err
 					}
@@ -89,7 +91,7 @@ func (app *BaseApp) RecordQuery(collectionModelOrIdentifier any) *dbx.SelectQuer
 
 					return nil
 				case *[]Record:
-					records, err := resolveRecordAllHook(collection, op)
+					records, err := resolveRecordAllHook(q, collection)
 					if err != nil {
 						return err
 					}
@@ -126,7 +128,7 @@ func (app *BaseApp) RecordQuery(collectionModelOrIdentifier any) *dbx.SelectQuer
 						return op(sliceA)
 					}
 
-					records, err := resolveRecordAllHook(collection, op)
+					records, err := resolveRecordAllHook(q, collection)
 					if err != nil {
 						return err
 					}
@@ -164,20 +166,85 @@ func (app *BaseApp) RecordQuery(collectionModelOrIdentifier any) *dbx.SelectQuer
 	})
 }
 
-func resolveRecordOneHook(collection *Collection, op func(dst any) error) (*Record, error) {
-	data := dbx.NullStringMap{}
-	if err := op(&data); err != nil {
+func resolveRecordOneHook(query *dbx.Query, collection *Collection) (*Record, error) {
+	data, err := scanQueryRowValues(query)
+	if err != nil {
 		return nil, err
 	}
-	return newRecordFromNullStringMap(collection, data)
+	return newRecordFromScannedValueMap(collection, data)
 }
 
-func resolveRecordAllHook(collection *Collection, op func(dst any) error) ([]*Record, error) {
-	data := []dbx.NullStringMap{}
-	if err := op(&data); err != nil {
+func resolveRecordAllHook(query *dbx.Query, collection *Collection) ([]*Record, error) {
+	data, err := scanQueryRowsValues(query)
+	if err != nil {
 		return nil, err
 	}
-	return newRecordsFromNullStringMaps(collection, data)
+	return newRecordsFromScannedValueMaps(collection, data)
+}
+
+func scanQueryRowValues(query *dbx.Query) (map[string]any, error) {
+	rows, err := query.Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		return nil, sql.ErrNoRows
+	}
+
+	result, err := scanCurrentRowValues(rows)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, rows.Err()
+}
+
+func scanQueryRowsValues(query *dbx.Query) ([]map[string]any, error) {
+	rows, err := query.Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make([]map[string]any, 0)
+	for rows.Next() {
+		row, err := scanCurrentRowValues(rows)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, row)
+	}
+
+	return result, rows.Err()
+}
+
+func scanCurrentRowValues(rows *dbx.Rows) (map[string]any, error) {
+	cols, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+
+	values := make([]any, len(cols))
+	refs := make([]any, len(cols))
+	for i := range cols {
+		refs[i] = &values[i]
+	}
+
+	if err := rows.Scan(refs...); err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]any, len(cols))
+	for i, col := range cols {
+		result[col] = values[i]
+	}
+
+	return result, nil
 }
 
 // dereference returns the underlying value v points to.
