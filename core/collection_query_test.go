@@ -23,9 +23,9 @@ func TestCollectionQuery(t *testing.T) {
 	app, _ := tests.NewTestApp()
 	defer app.Cleanup()
 
-	expected := "SELECT {{_collections}}.* FROM `_collections`"
+	expected := normalizeCollectionTableRefsForTests("SELECT {{_collections}}.* FROM `_collections`")
 
-	sql := app.CollectionQuery().Build().SQL()
+	sql := normalizeCollectionTableRefsForTests(app.CollectionQuery().Build().SQL())
 	if sql != expected {
 		t.Errorf("Expected sql %s, got %s", expected, sql)
 	}

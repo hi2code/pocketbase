@@ -793,11 +793,11 @@ func TestRecordFieldResolverUpdateQuery(t *testing.T) {
 				return
 			}
 
-			rawQuery := query.AndWhere(expr).Build().SQL()
+			rawQuery := normalizeCollectionTableRefsForTests(query.AndWhere(expr).Build().SQL())
 
 			// replace TEST placeholder with .+ regex pattern
 			expectQuery := strings.ReplaceAll(
-				"^"+regexp.QuoteMeta(s.expectQuery)+"$",
+				"^"+regexp.QuoteMeta(normalizeCollectionTableRefsForTests(s.expectQuery))+"$",
 				"TEST",
 				`\w+`,
 			)

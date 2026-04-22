@@ -2279,12 +2279,12 @@ func TestRecordDelete(t *testing.T) {
 		t.Fatalf("(rec3) Expected the delete to cascade, found relation %v", rel)
 	}
 	// ensure that the json rel fields were prefixed
-	joinedQueries := strings.Join(calledQueries, " ")
-	expectedRelManyPart := "SELECT `demo1`.* FROM `demo1` WHERE EXISTS (SELECT 1 FROM json_each(CASE WHEN iif(json_valid([[demo1.rel_many]]), json_type([[demo1.rel_many]])='array', FALSE) THEN [[demo1.rel_many]] ELSE json_array([[demo1.rel_many]]) END) {{__je__}} WHERE [[__je__.value]]='"
+	joinedQueries := normalizeCollectionTableRefsForTests(strings.Join(calledQueries, " "))
+	expectedRelManyPart := normalizeCollectionTableRefsForTests("SELECT `demo1`.* FROM `demo1` WHERE EXISTS (SELECT 1 FROM json_each(CASE WHEN iif(json_valid([[demo1.rel_many]]), json_type([[demo1.rel_many]])='array', FALSE) THEN [[demo1.rel_many]] ELSE json_array([[demo1.rel_many]]) END) {{__je__}} WHERE [[__je__.value]]='")
 	if !strings.Contains(joinedQueries, expectedRelManyPart) {
 		t.Fatalf("(rec3) Expected the cascade delete to call the query \n%v, got \n%v", expectedRelManyPart, calledQueries)
 	}
-	expectedRelOnePart := "SELECT `demo1`.* FROM `demo1` WHERE (`demo1`.`rel_one`='"
+	expectedRelOnePart := normalizeCollectionTableRefsForTests("SELECT `demo1`.* FROM `demo1` WHERE (`demo1`.`rel_one`='")
 	if !strings.Contains(joinedQueries, expectedRelOnePart) {
 		t.Fatalf("(rec3) Expected the cascade delete to call the query \n%v, got \n%v", expectedRelOnePart, calledQueries)
 	}
