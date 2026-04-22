@@ -57,6 +57,27 @@ func TestRecordQueryWithDifferentCollectionValues(t *testing.T) {
 	}
 }
 
+func TestRecordQueryBuildUsesPlaceholdersForDM(t *testing.T) {
+	t.Parallel()
+
+	app, _ := tests.NewTestApp()
+	defer app.Cleanup()
+
+	collection, err := app.FindCollectionByNameOrId("demo1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dbutils.SetDialectByDriver("dm")
+	defer dbutils.SetDialectByDriver("sqlite")
+
+	sql := app.RecordQuery(collection).Build().SQL()
+
+	if !strings.Contains(sql, "{{demo1}}") {
+		t.Fatalf("expected DM-safe table placeholder in SQL, got %q", sql)
+	}
+}
+
 func TestRecordQueryOne(t *testing.T) {
 	t.Parallel()
 

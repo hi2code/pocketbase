@@ -50,3 +50,29 @@ func TestMultiMatchSubqueryBuild(t *testing.T) {
 		t.Fatalf("Expected final params\n%s\ngot\n%s", expectedParams, rawParams)
 	}
 }
+
+func TestMultiMatchSubqueryBuildWithTablePlaceholders(t *testing.T) {
+	// create a dummy db
+	sqlDB, err := sql.Open("sqlite", "file::memory:?cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := dbx.NewFromDB(sqlDB, "sqlite")
+
+	mm := search.MultiMatchSubquery{
+		TargetTableAlias: "test_TargetTableAlias",
+		FromTableName:    "{{test_FromTableName}}",
+		FromTableAlias:   "test_FromTableAlias",
+		ValueIdentifier:  "1",
+		Joins: []*search.Join{
+			{TableName: "{{join_table1}}", TableAlias: "join_alias1"},
+		},
+	}
+
+	result := mm.Build(db, nil)
+
+	expectedResult := "SELECT `1` as [[multiMatchValue]] FROM {{test_FromTableName}} `test_FromTableAlias` LEFT JOIN {{join_table1}} `join_alias1` WHERE `test_FromTableAlias`.`id` = `test_TargetTableAlias`.`id`"
+	if expectedResult != result {
+		t.Fatalf("Expected build result\n%v\ngot\n%v", expectedResult, result)
+	}
+}

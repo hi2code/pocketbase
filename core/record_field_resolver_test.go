@@ -9,6 +9,7 @@ import (
 
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
+	"github.com/pocketbase/pocketbase/tools/dbutils"
 	"github.com/pocketbase/pocketbase/tools/list"
 	"github.com/pocketbase/pocketbase/tools/search"
 	"github.com/pocketbase/pocketbase/tools/types"
@@ -77,6 +78,102 @@ func TestRecordFieldResolverAllowHiddenFields(t *testing.T) {
 	allowHiddenFields = r.AllowHiddenFields()
 	if allowHiddenFields != expected {
 		t.Fatalf("Expected changed allowHiddenFields %v, got %v", expected, allowHiddenFields)
+	}
+}
+
+func TestRecordFieldResolverUpdateQueryUsesPlaceholdersForDMCollectionJoins(t *testing.T) {
+	app, _ := tests.NewTestApp()
+	defer app.Cleanup()
+
+	collection, err := app.FindCollectionByNameOrId("demo4")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dbutils.SetDialectByDriver("dm")
+	defer dbutils.SetDialectByDriver("sqlite")
+
+	q := app.RecordQuery(collection)
+	resolver := core.NewRecordFieldResolver(app, collection, nil, false)
+
+	expr, err := search.FilterData("@collection.demo3.title > 1").BuildExpr(resolver)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q.AndWhere(expr)
+
+	if err := resolver.UpdateQuery(q); err != nil {
+		t.Fatal(err)
+	}
+
+	sql := q.Build().SQL()
+	if !strings.Contains(sql, "{{demo3}} `__collection_demo3`") {
+		t.Fatalf("expected DM-safe collection join placeholder in SQL, got %q", sql)
+	}
+}
+
+func TestRecordFieldResolverUpdateQueryUsesPlaceholdersForDMBackRelationJoins(t *testing.T) {
+	app, _ := tests.NewTestApp()
+	defer app.Cleanup()
+
+	collection, err := app.FindCollectionByNameOrId("demo3")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dbutils.SetDialectByDriver("dm")
+	defer dbutils.SetDialectByDriver("sqlite")
+
+	q := app.RecordQuery(collection)
+	resolver := core.NewRecordFieldResolver(app, collection, nil, false)
+
+	expr, err := search.FilterData("demo4_via_rel_one_cascade.id = true").BuildExpr(resolver)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q.AndWhere(expr)
+
+	if err := resolver.UpdateQuery(q); err != nil {
+		t.Fatal(err)
+	}
+
+	sql := q.Build().SQL()
+	if !strings.Contains(sql, "{{demo4}} `demo3_demo4_via_rel_one_cascade`") {
+		t.Fatalf("expected DM-safe back relation join placeholder in SQL, got %q", sql)
+	}
+}
+
+func TestRecordFieldResolverUpdateQueryUsesPlaceholdersForDMBackRelationMultiMatch(t *testing.T) {
+	app, _ := tests.NewTestApp()
+	defer app.Cleanup()
+
+	collection, err := app.FindCollectionByNameOrId("demo3")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dbutils.SetDialectByDriver("dm")
+	defer dbutils.SetDialectByDriver("sqlite")
+
+	q := app.RecordQuery(collection)
+	resolver := core.NewRecordFieldResolver(app, collection, nil, false)
+
+	expr, err := search.FilterData("demo4_via_rel_one_cascade.id = true").BuildExpr(resolver)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q.AndWhere(expr)
+
+	if err := resolver.UpdateQuery(q); err != nil {
+		t.Fatal(err)
+	}
+
+	sql := q.Build().SQL()
+	if !strings.Contains(sql, "FROM {{demo3}} `__mm_demo3`") {
+		t.Fatalf("expected DM-safe multi-match base table placeholder in SQL, got %q", sql)
+	}
+	if !strings.Contains(sql, "LEFT JOIN {{demo4}} `__mm_demo3_demo4_via_rel_one_cascade`") {
+		t.Fatalf("expected DM-safe multi-match join placeholder in SQL, got %q", sql)
 	}
 }
 

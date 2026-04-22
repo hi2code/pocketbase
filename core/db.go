@@ -79,7 +79,7 @@ func (app *BaseApp) modelQuery(db dbx.Builder, m Model) *dbx.SelectQuery {
 
 	return db.
 		Select("{{" + tableName + "}}.*").
-		From(tableName).
+		From("{{" + tableName + "}}").
 		WithBuildHook(func(query *dbx.Query) {
 			query.WithExecHook(execLockRetry(app.config.QueryTimeout, defaultMaxLockRetries))
 		})
