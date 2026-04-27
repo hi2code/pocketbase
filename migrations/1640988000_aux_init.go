@@ -72,12 +72,16 @@ func init() {
 					return err
 				}
 
-				for _, query := range []string{
-					`CREATE INDEX idx_logs_level ON [[_logs]] ([[level]])`,
-					`CREATE INDEX idx_logs_message ON [[_logs]] ([[message]])`,
-					`CREATE INDEX idx_logs_created_hour ON [[_logs]] ([[created]])`,
-				} {
-					if _, err := txApp.AuxDB().NewQuery(query).Execute(); err != nil {
+				indexes := []struct {
+					name  string
+					query string
+				}{
+					{"idx_logs_level", `CREATE INDEX idx_logs_level ON [[_logs]] ([[level]])`},
+					{"idx_logs_message", `CREATE INDEX idx_logs_message ON [[_logs]] ([[message]])`},
+					{"idx_logs_created_hour", `CREATE INDEX idx_logs_created_hour ON [[_logs]] ([[created]])`},
+				}
+				for _, index := range indexes {
+					if err := dmCreateIndexIfMissing(txApp.AuxDB(), "_logs", index.name, index.query); err != nil {
 						return err
 					}
 				}

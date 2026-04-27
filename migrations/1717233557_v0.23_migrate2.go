@@ -9,7 +9,17 @@ import (
 
 func init() {
 	core.SystemMigrations.Register(func(txApp core.App) error {
-		if dbutils.GetDialect().Name() != "mysql" {
+		if dbutils.GetDialect().Name() == "dm" {
+			err := dmCreateIndexIfMissing(
+				txApp.DB(),
+				"_collections",
+				"idx__collections_type",
+				"CREATE INDEX idx__collections_type ON [[_collections]] ([[type]])",
+			)
+			if err != nil {
+				return err
+			}
+		} else if dbutils.GetDialect().Name() != "mysql" {
 			_, err := txApp.DB().NewQuery("CREATE INDEX IF NOT EXISTS idx__collections_type on {{_collections}} ([[type]]);").Execute()
 			if err != nil {
 				return err

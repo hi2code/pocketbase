@@ -276,9 +276,27 @@ func (r *MigrationsRunner) initMigrationsTable() error {
 	}
 
 	appliedType := "INTEGER"
-	switch dbutils.GetDialect().Name() {
+	dialect := dbutils.GetDialect().Name()
+	switch dialect {
 	case "mysql", "dm":
 		appliedType = "BIGINT"
+	}
+
+	if dialect == "dm" {
+		if !r.app.HasTable(r.tableName) {
+			rawQuery := fmt.Sprintf(
+				"CREATE TABLE [[%s]] ([[file]] VARCHAR(255) PRIMARY KEY NOT NULL, [[applied]] BIGINT NOT NULL)",
+				r.tableName,
+			)
+			if _, err := r.app.DB().NewQuery(rawQuery).Execute(); err != nil {
+				return err
+			}
+		}
+		if err := r.ensureDMMigrationsAppliedType(); err != nil {
+			return err
+		}
+		r.inited = true
+		return nil
 	}
 
 	rawQuery := fmt.Sprintf(
@@ -294,9 +312,6 @@ func (r *MigrationsRunner) initMigrationsTable() error {
 
 	if appliedType == "BIGINT" {
 		alterQuery := fmt.Sprintf("ALTER TABLE {{%s}} MODIFY [[applied]] BIGINT NOT NULL", r.tableName)
-		if dbutils.GetDialect().Name() == "dm" {
-			alterQuery = fmt.Sprintf("ALTER TABLE {{%s}} MODIFY applied BIGINT NOT NULL", r.tableName)
-		}
 		_, err = r.app.DB().NewQuery(alterQuery).Execute()
 	}
 
@@ -304,6 +319,28 @@ func (r *MigrationsRunner) initMigrationsTable() error {
 		r.inited = true
 	}
 
+	return err
+}
+
+func (r *MigrationsRunner) ensureDMMigrationsAppliedType() error {
+	var dataType string
+	err := r.app.DB().NewQuery(`
+		SELECT DATA_TYPE
+		FROM USER_TAB_COLUMNS
+		WHERE UPPER(TABLE_NAME) = UPPER({:tableName})
+		  AND UPPER(COLUMN_NAME) = UPPER('applied')
+	`).Bind(dbx.Params{"tableName": r.tableName}).Row(&dataType)
+	if err != nil {
+		return err
+	}
+
+	if strings.Contains(strings.ToUpper(strings.TrimSpace(dataType)), "BIGINT") {
+		return nil
+	}
+
+	_, err = r.app.DB().NewQuery(
+		fmt.Sprintf("ALTER TABLE [[%s]] MODIFY [[applied]] BIGINT NOT NULL", r.tableName),
+	).Execute()
 	return err
 }
 
