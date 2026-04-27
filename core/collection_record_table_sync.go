@@ -39,8 +39,10 @@ func (app *BaseApp) SyncRecordTableSchema(newCollection *Collection, oldCollecti
 			}
 
 			// create table
-			if _, err := txApp.DB().CreateTable(tableName, cols).Execute(); err != nil {
-				return err
+			if !txApp.HasTable(tableName) {
+				if _, err := txApp.DB().CreateTable(tableName, cols).Execute(); err != nil {
+					return err
+				}
 			}
 
 			return createCollectionIndexes(txApp, newCollection)
@@ -316,7 +318,16 @@ func dropCollectionIndexes(app App, collection *Collection) error {
 			}
 
 			dropIndexQuery := fmt.Sprintf("DROP INDEX IF EXISTS [[%s]]", parsed.IndexName)
-			if dbutils.GetDialect().Name() == "mysql" {
+			if dbutils.GetDialect().Name() == "dm" {
+				exists, err := dmIndexExists(txApp.DB(), parsed.TableName, parsed.IndexName)
+				if err != nil {
+					return err
+				}
+				if !exists {
+					continue
+				}
+				dropIndexQuery = fmt.Sprintf("DROP INDEX [[%s]]", parsed.IndexName)
+			} else if dbutils.GetDialect().Name() == "mysql" {
 				dropIndexQuery = fmt.Sprintf("DROP INDEX [[%s]] ON {{%s}}", parsed.IndexName, parsed.TableName)
 			}
 
@@ -356,6 +367,26 @@ func createCollectionIndexes(app App, collection *Collection) error {
 				continue
 			}
 
+			if dbutils.GetDialect().Name() == "dm" {
+				exists, err := dmIndexExists(txApp.DB(), collection.Name, parsed.IndexName)
+				if err != nil {
+					errs[strconv.Itoa(i)] = validation.NewError(
+						"validation_invalid_index_expression",
+						fmt.Sprintf("Failed to inspect index %s - %v.", parsed.IndexName, err.Error()),
+					)
+					continue
+				}
+				if exists {
+					if _, err := txApp.DB().NewQuery(fmt.Sprintf("DROP INDEX [[%s]]", parsed.IndexName)).Execute(); err != nil {
+						errs[strconv.Itoa(i)] = validation.NewError(
+							"validation_invalid_index_expression",
+							fmt.Sprintf("Failed to drop index %s - %v.", parsed.IndexName, err.Error()),
+						)
+						continue
+					}
+				}
+			}
+
 			if _, err := txApp.DB().NewQuery(parsed.Build()).Execute(); err != nil {
 				errs[strconv.Itoa(i)] = validation.NewError(
 					"validation_invalid_index_expression",
@@ -371,4 +402,19 @@ func createCollectionIndexes(app App, collection *Collection) error {
 
 		return nil
 	})
+}
+
+func dmIndexExists(db dbx.Builder, tableName string, indexName string) (bool, error) {
+	var count int
+	err := db.NewQuery(`
+		SELECT COUNT(1)
+		FROM USER_INDEXES
+		WHERE UPPER(TABLE_NAME) = UPPER({:tableName})
+		  AND UPPER(INDEX_NAME) = UPPER({:indexName})
+	`).Bind(dbx.Params{
+		"tableName": tableName,
+		"indexName": indexName,
+	}).Row(&count)
+
+	return count > 0, err
 }

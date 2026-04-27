@@ -232,6 +232,24 @@ func TestIndexBuild(t *testing.T) {
 	}
 }
 
+func TestIndexBuildDMSkipsOptionalClause(t *testing.T) {
+	dbutils.SetDialectByDriver("dm")
+	defer dbutils.SetDialectByDriver("sqlite")
+
+	index := dbutils.Index{
+		Optional:  true,
+		IndexName: "idx_test_name",
+		TableName: "test",
+		Columns:   []dbutils.IndexColumn{{Name: "name"}},
+	}
+
+	result := index.Build()
+	expected := "CREATE INDEX `idx_test_name` ON `test` (`name`)"
+	if result != expected {
+		t.Fatalf("Expected \n%v \ngot \n%v", expected, result)
+	}
+}
+
 func TestHasSingleColumnUniqueIndex(t *testing.T) {
 	scenarios := []struct {
 		name     string

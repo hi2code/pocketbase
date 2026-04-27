@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/dbutils"
 	"github.com/pocketbase/pocketbase/tools/types"
@@ -93,14 +94,18 @@ func init() {
 				`).Execute(); execerr != nil {
 					return fmt.Errorf("_collections exec error: %w", execerr)
 				}
+			}
 
-				for _, query := range []string{
-					`CREATE UNIQUE INDEX idx__collections_name ON [[_collections]] ([[name]])`,
-					`CREATE INDEX idx__collections_type ON [[_collections]] ([[type]])`,
-				} {
-					if _, execerr := txApp.DB().NewQuery(query).Execute(); execerr != nil {
-						return fmt.Errorf("_collections exec error: %w", execerr)
-					}
+			indexes := []struct {
+				name  string
+				query string
+			}{
+				{"idx__collections_name", `CREATE UNIQUE INDEX idx__collections_name ON [[_collections]] ([[name]])`},
+				{"idx__collections_type", `CREATE INDEX idx__collections_type ON [[_collections]] ([[type]])`},
+			}
+			for _, index := range indexes {
+				if execerr := dmCreateIndexIfMissing(txApp.DB(), "_collections", index.name, index.query); execerr != nil {
+					return fmt.Errorf("_collections exec error: %w", execerr)
 				}
 			}
 		} else {
@@ -251,6 +256,34 @@ func dmTableExists(txApp core.App, tableName string) (bool, error) {
 	`).Bind(map[string]any{"tableName": tableName}).Row(&count)
 
 	return count > 0, err
+}
+
+func dmIndexExists(db dbx.Builder, tableName string, indexName string) (bool, error) {
+	var count int
+	err := db.NewQuery(`
+		SELECT COUNT(1)
+		FROM USER_INDEXES
+		WHERE UPPER(TABLE_NAME) = UPPER({:tableName})
+		  AND UPPER(INDEX_NAME) = UPPER({:indexName})
+	`).Bind(dbx.Params{
+		"tableName": tableName,
+		"indexName": indexName,
+	}).Row(&count)
+
+	return count > 0, err
+}
+
+func dmCreateIndexIfMissing(db dbx.Builder, tableName string, indexName string, query string) error {
+	exists, err := dmIndexExists(db, tableName, indexName)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+
+	_, err = db.NewQuery(query).Execute()
+	return err
 }
 
 func createMFAsCollection(txApp core.App) error {

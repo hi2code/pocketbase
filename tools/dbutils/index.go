@@ -54,7 +54,7 @@ func (idx Index) Build() string {
 
 	str.WriteString("INDEX ")
 
-	if idx.Optional {
+	if idx.Optional && GetDialect().Name() != "dm" {
 		str.WriteString("IF NOT EXISTS ")
 	}
 
