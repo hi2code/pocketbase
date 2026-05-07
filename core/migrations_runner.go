@@ -285,7 +285,7 @@ func (r *MigrationsRunner) initMigrationsTable() error {
 	if dialect == "dm" {
 		if !r.app.HasTable(r.tableName) {
 			rawQuery := fmt.Sprintf(
-				"CREATE TABLE [[%s]] ([[file]] VARCHAR(255) PRIMARY KEY NOT NULL, [[applied]] BIGINT NOT NULL)",
+				"CREATE TABLE IF NOT EXISTS [[%s]] ([[file]] VARCHAR(255) PRIMARY KEY NOT NULL, [[applied]] BIGINT NOT NULL)",
 				r.tableName,
 			)
 			if _, err := r.app.DB().NewQuery(rawQuery).Execute(); err != nil {
