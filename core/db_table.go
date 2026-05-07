@@ -131,7 +131,7 @@ func (app *BaseApp) hasTable(db dbx.Builder, tableName string) bool {
 				SELECT TABLE_NAME AS name FROM USER_TABLES
 				UNION ALL
 				SELECT VIEW_NAME AS name FROM USER_VIEWS
-			)
+			) t
 			WHERE LOWER(name) = LOWER({:tableName})
 			LIMIT 1
 		`).Bind(dbx.Params{"tableName": tableName}).Row(&exists)
