@@ -128,9 +128,9 @@ func (app *BaseApp) hasTable(db dbx.Builder, tableName string) bool {
 		err := db.NewQuery(`
 			SELECT 1
 			FROM (
-				SELECT TABLE_NAME AS name FROM USER_TABLES
+				SELECT TABLE_NAME AS name FROM ALL_TABLES WHERE OWNER = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')
 				UNION ALL
-				SELECT VIEW_NAME AS name FROM USER_VIEWS
+				SELECT VIEW_NAME AS name FROM ALL_VIEWS WHERE OWNER = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')
 			) t
 			WHERE LOWER(name) = LOWER({:tableName})
 			LIMIT 1

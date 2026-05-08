@@ -51,8 +51,9 @@ func init() {
 				var logsTableCount int
 				if err := txApp.AuxDB().NewQuery(`
 					SELECT COUNT(1)
-					FROM USER_TABLES
-					WHERE UPPER(TABLE_NAME) = UPPER('_logs')
+					FROM ALL_TABLES
+					WHERE OWNER = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')
+					  AND UPPER(TABLE_NAME) = UPPER('_logs')
 				`).Row(&logsTableCount); err != nil {
 					return err
 				}

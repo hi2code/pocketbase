@@ -326,8 +326,9 @@ func (r *MigrationsRunner) ensureDMMigrationsAppliedType() error {
 	var dataType string
 	err := r.app.DB().NewQuery(`
 		SELECT DATA_TYPE
-		FROM USER_TAB_COLUMNS
-		WHERE UPPER(TABLE_NAME) = UPPER({:tableName})
+		FROM ALL_TAB_COLUMNS
+		WHERE OWNER = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')
+		  AND UPPER(TABLE_NAME) = UPPER({:tableName})
 		  AND UPPER(COLUMN_NAME) = UPPER('applied')
 	`).Bind(dbx.Params{"tableName": r.tableName}).Row(&dataType)
 	if err != nil {
