@@ -251,8 +251,9 @@ func dmTableExists(txApp core.App, tableName string) (bool, error) {
 	var count int
 	err := txApp.DB().NewQuery(`
 		SELECT COUNT(1)
-		FROM USER_TABLES
-		WHERE UPPER(TABLE_NAME) = UPPER({:tableName})
+		FROM ALL_TABLES
+		WHERE OWNER = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')
+		  AND UPPER(TABLE_NAME) = UPPER({:tableName})
 	`).Bind(map[string]any{"tableName": tableName}).Row(&count)
 
 	return count > 0, err
@@ -262,8 +263,9 @@ func dmIndexExists(db dbx.Builder, tableName string, indexName string) (bool, er
 	var count int
 	err := db.NewQuery(`
 		SELECT COUNT(1)
-		FROM USER_INDEXES
-		WHERE UPPER(TABLE_NAME) = UPPER({:tableName})
+		FROM ALL_INDEXES
+		WHERE OWNER = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')
+		  AND UPPER(TABLE_NAME) = UPPER({:tableName})
 		  AND UPPER(INDEX_NAME) = UPPER({:indexName})
 	`).Bind(dbx.Params{
 		"tableName": tableName,
