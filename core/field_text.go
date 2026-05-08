@@ -160,7 +160,9 @@ func (f *TextField) ColumnType(app App) string {
 		if f.PrimaryKey {
 			return "VARCHAR(32) PRIMARY KEY NOT NULL"
 		}
-		return "VARCHAR(255) DEFAULT '' NOT NULL"
+		// default to a larger size to accommodate URLs and long texts in DM/MySQL
+		// without using TEXT/CLOB which has indexing/sorting limitations.
+		return "VARCHAR(4000) DEFAULT '' NOT NULL"
 	}
 
 	if f.PrimaryKey {
