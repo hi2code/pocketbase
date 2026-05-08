@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
@@ -92,6 +93,9 @@ func init() {
 						[[updated]]    VARCHAR(32) DEFAULT '' NOT NULL
 					)
 				`).Execute(); execerr != nil {
+					if strings.Contains(execerr.Error(), "-2124") {
+						return nil
+					}
 					return fmt.Errorf("_collections exec error: %w", execerr)
 				}
 			}
@@ -211,16 +215,21 @@ func createParamsTable(txApp core.App) error {
 			return nil
 		}
 
-		_, execErr := txApp.DB().NewQuery(`
+		if _, execErr := txApp.DB().NewQuery(`
 			CREATE TABLE [[_params]] (
 				[[id]]      VARCHAR(32) PRIMARY KEY NOT NULL,
 				[[value]]   VARCHAR(4000),
 				[[created]] VARCHAR(32) DEFAULT '' NOT NULL,
 				[[updated]] VARCHAR(32) DEFAULT '' NOT NULL
 			)
-		`).Execute()
+		`).Execute(); execErr != nil {
+			if strings.Contains(execErr.Error(), "-2124") {
+				return nil
+			}
+			return execErr
+		}
 
-		return execErr
+		return nil
 	}
 
 	_, execErr := txApp.DB().NewQuery(`
@@ -248,27 +257,22 @@ func mysqlTableExists(txApp core.App, tableName string) (bool, error) {
 }
 
 func dmTableExists(txApp core.App, tableName string) (bool, error) {
-	var count int
-	err := txApp.DB().NewQuery(`
-		SELECT COUNT(1)
-		FROM ALL_TABLES
-		WHERE OWNER = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')
-		  AND UPPER(TABLE_NAME) = UPPER({:tableName})
-	`).Bind(map[string]any{"tableName": tableName}).Row(&count)
-
-	return count > 0, err
+	return txApp.HasTable(tableName), nil
 }
 
 func dmIndexExists(db dbx.Builder, tableName string, indexName string) (bool, error) {
+	// a reliable way to check for index existence in DM is to use SYSOBJECTS or just try to create it and ignore error,
+	// but here we can use a query to ALL_INDEXES without the restrictive OWNER filter if needed, 
+	// or just trust HasTable for tables and use a similar dummy query for indexes? 
+	// Actually, DM doesn't have an easy way to "query" an index.
+	// Let's use SYSOBJECTS which is more global.
 	var count int
 	err := db.NewQuery(`
 		SELECT COUNT(1)
-		FROM ALL_INDEXES
-		WHERE OWNER = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')
-		  AND UPPER(TABLE_NAME) = UPPER({:tableName})
-		  AND UPPER(INDEX_NAME) = UPPER({:indexName})
+		FROM SYSOBJECTS
+		WHERE TYPE$ = 'INDEX'
+		  AND UPPER(NAME) = UPPER({:indexName})
 	`).Bind(dbx.Params{
-		"tableName": tableName,
 		"indexName": indexName,
 	}).Row(&count)
 

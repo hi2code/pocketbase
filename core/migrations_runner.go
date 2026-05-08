@@ -285,10 +285,14 @@ func (r *MigrationsRunner) initMigrationsTable() error {
 	if dialect == "dm" {
 		if !r.app.HasTable(r.tableName) {
 			rawQuery := fmt.Sprintf(
-				"CREATE TABLE IF NOT EXISTS [[%s]] ([[file]] VARCHAR(255) PRIMARY KEY NOT NULL, [[applied]] BIGINT NOT NULL)",
+				"CREATE TABLE [[%s]] ([[file]] VARCHAR(255) PRIMARY KEY NOT NULL, [[applied]] BIGINT NOT NULL)",
 				r.tableName,
 			)
 			if _, err := r.app.DB().NewQuery(rawQuery).Execute(); err != nil {
+				// if the table already exists, ignore the error (idempotency safeguard)
+				if strings.Contains(err.Error(), "-2124") {
+					return nil
+				}
 				return err
 			}
 		}

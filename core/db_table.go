@@ -125,17 +125,10 @@ func (app *BaseApp) hasTable(db dbx.Builder, tableName string) bool {
 	}
 
 	if dbutils.GetDialect().Name() == "dm" {
-		err := db.NewQuery(`
-			SELECT 1
-			FROM (
-				SELECT TABLE_NAME AS name FROM ALL_TABLES WHERE OWNER = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')
-				UNION ALL
-				SELECT VIEW_NAME AS name FROM ALL_VIEWS WHERE OWNER = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')
-			) t
-			WHERE LOWER(name) = LOWER({:tableName})
-			LIMIT 1
-		`).Bind(dbx.Params{"tableName": tableName}).Row(&exists)
-
+		var exists int
+		err := db.NewQuery("SELECT 1 FROM SYSOBJECTS WHERE (TYPE$ = 'SCHOBJ' OR TYPE$ = 'VIEW') AND UPPER(NAME) = UPPER({:tableName})").
+			Bind(dbx.Params{"tableName": tableName}).
+			Row(&exists)
 		return err == nil && exists > 0
 	}
 
