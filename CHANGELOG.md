@@ -1,12 +1,196 @@
-## v0.36.6 (WIP)
+## v0.38.0
+
+- Fixed UI logs pagination when no custom range is specified.
+
+- Fixed default CSP not allowing audio/video previews ([#7677](https://github.com/pocketbase/pocketbase/issues/7677)).
+
+- Serve fixed `Content-Type` for `.xlsx`, `.docx` and `.pptx` files to allow previews on iOS ([#7467](https://github.com/pocketbase/pocketbase/discussions/7467)).
+
+- Changed settings app URL input to `type="text"` for compatibility with earlier versions ([#7681](https://github.com/pocketbase/pocketbase/issues/7681)).
+
+- Added an internal watcher to sync various runtime states between multiple PocketBase processes (e.g. memory store) using the same `pb_data`.
+    _This is helpful in case for example a separate PocketBase console command change the collections or application settings while the server is still running._
+    _The watcher is debounced and implemented by watching the special `pb_data/.notify` dir as a workaround to avoid depending on OS and SQLite driver specific APIs._
+
+- Added new [Superuser IPs/CIDR subnets whitelist setting](https://pocketbase.io/docs/going-to-production/#limit-superusers-to-specific-ipssubnets).
+    The optional setting can be changed from the UI under _Dasboard > Settings > Application > Superuser IPs_.
+    To avoid lockout in case your superuser IP change, the ips whitelist can be updated also via the `superuser ips` console command:
+    ```sh
+    # note: --dir is optional and defaults to pb_data next to the executable
+
+    # clear whitelisted IPs
+    ./pocketbase superuser ips --dir=/custom/path/to/pb_data
+
+    # OR change the whitelisted IPs to 127.0.0.1 and 10.0.0.0 (replace with your real IP(s))
+    ./pocketbase superuser ips 127.0.0.1 10.0.0.0 --dir=/custom/path/to/pb_data
+    ```
+
+- Added rate limit option to exclude IPs/CIDR subnets ([#6410](https://github.com/pocketbase/pocketbase/issues/6410)).
+
+- Bumped min Go GitHub action version to 1.26.3 because it comes with some [minor bug and security fixes](https://github.com/golang/go/issues?q=milestone%3AGo1.26.3).
+
+
+## v0.37.5
+
+- Fixed password fields not being detected as changed ([#7670](https://github.com/pocketbase/pocketbase/issues/7670)).
+
+- Added the local time zone name next to the `date` field label.
+
+- Reload trusted proxy info UI after settings save.
+
+- Other minor improvements (skips the duplicated record ids from the `IN` expand list, reordered confirm-email-change error checks to minimize enumeration attacks, etc.).
+
+
+## v0.37.4
+
+- Added backups list scroll container ([#7655](https://github.com/pocketbase/pocketbase/issues/7655)).
+
+- Optimized record upsert and preview modals data loading to minimize layout jumps.
+
+- Fixed SMTP IPv6 network address format ([#7659](https://github.com/pocketbase/pocketbase/issues/7659)).
+
+- Fixed autocomplete selection not properly updating the underlying input value ([#7664](https://github.com/pocketbase/pocketbase/issues/7664)).
+
+- Added `ghupdate.BaseURL` config option ([#7665](https://github.com/pocketbase/pocketbase/issues/7665)).
+
+- Added dummy bcrypt password check for the failure auth path to minimize enumeration timing attacks when registrations are disabled.
+
+- Adjusted Bitbucket, GitHub, GitLab and Gitea/Forgejo OAuth2 providers to better reflect recent API updates and doc references.
+    _In case the userinfo data is not sufficient, some of the providers now send a separate list emails request in order to minimize eventual linking security issues caused by custom onpremise setups (e.g. Gitea/Forgejo allows skipping the email verification if an ENV variable is configured)._
+
+- ⚠️ Fixed a pre-hijacking OAuth2 linking vulnerability ([#7662](https://github.com/pocketbase/pocketbase/discussions/7662); thanks @Alardiians for reporting it privately).
+
+- Bumped Go and npm dependencies.
+
+
+## v0.37.3
+
+- Fixed total count load on page back/forward navigation.
+
+- Fixed `editor` floating dialogs position when scrolling ([#7653](https://github.com/pocketbase/pocketbase/issues/7653)).
+
+- Enabled text wrapping for the API rule fields.
+
+- Added view query sample loading indicator.
+
+- Other minor light UI contrast and styles improvements.
+
+
+## v0.37.2
+
+- Fixed autoexpandable input in Firefox ([#7648](https://github.com/pocketbase/pocketbase/discussions/7648)).
+
+- Slightly adjusted the dark theme colors for better readability ([#7648](https://github.com/pocketbase/pocketbase/discussions/7648)).
+
+- Removed unnecessary tags stripping from the displayed log attributes ([#7649](https://github.com/pocketbase/pocketbase/issues/7649)).
+
+- Workarounded Safari freeze caused by a buggy CSS popover property ([#7650](https://github.com/pocketbase/pocketbase/issues/7650)).
+
+
+## v0.37.1
+
+- Minor UI bugfixes:
+    - Fixed `number` field input values normalization ([#7646](https://github.com/pocketbase/pocketbase/issues/7646)).
+    - Allow opening collections in new tab with middle click.
+    - Show collection name in the page title on initial load.
+
+
+## v0.37.0
+
+- New UI rewritten from scratch and with support for external customization in mind.
+    > Note that as explained in [#7612](https://github.com/pocketbase/pocketbase/discussions/7612) the new UI kit and extensions APIs will intentionally remain undocumented until "Stage 2 completion" _(there no ETAs)_.
+
+    The new UI also introduced several other small improvements:
+    - ~2MB smaller bundle size.
+    - Dark mode and theming support.
+    - Basic responsive/mobile support _(it is far from perfect but certainly more usable than before)_.
+    - Help text option for the collection fields.
+    - Lifted the max nested level restriction of presentable relations _(children are lazy loaded)_.
+    - Lighter rules autocomplete.
+    - Live view query preview.
+    - Insert of an audio/video embed tag in the richtext editor from a collection file.
+    - Option to bulk export records as JSON.
+    - Local search history for all searchbars.
+    - API rules overview across all collections.
+    - Very basic ERD-like visualization for the collections structure and relations.
+    - New stepped logs chart visualization with panning support.
+    - `listAuthMethods()` (aka. `/api/collection/{col}/auth-methods`) now returns the OAuth2 provider logo for each provider as inlined SVG string in its response data.
+        _⚠️ Note that if your app for whatever reason rely on the dashboard OAuth2 logos available under `/_/images/oauth2/*` they are still available for now but will be removed in future versions and it is recommended to use the new inline SVGs!_
+
+- Added optional `no_ui` build tag to exclude the UI from bundling with the executable ([#7548](https://github.com/pocketbase/pocketbase/issues/7548)).
+    ```sh
+    go build -tags no_ui
+    ```
+
+- Exported the internal JSVM bind functions ([#7600](https://github.com/pocketbase/pocketbase/discussions/7600)).
+    ```go
+    jsvm.BindCore(vm)
+    jsvm.BindDbx(vm)
+    jsvm.BindSecurity(vm)
+    jsvm.BindOS(vm)
+    jsvm.BindFilepath(vm)
+    jsvm.BindHTTP(vm)
+    jsvm.BindFilesystem(vm)
+    jsvm.BindForms(vm)
+    jsvm.BindMails(vm)
+    jsvm.BindApis(vm)
+    ```
+
+- Updated `modernc.org/sqlite` to v1.49.1 (SQLite 3.53.0).
+
+
+## v0.36.9
+
+- Updated the Discord `AuthUser.Name` field to use `global_name` ([#7603](https://github.com/pocketbase/pocketbase/pull/7603); thanks @HansHans135).
+
+- Fixed settings SMTP password clear persistence.
+
+- Added extra OAuth2 checks when downloading the avatar URL to prevent internal network probing requests in case of a malicious/vulnerable vendor.
+
+- Updated `modernc.org/sqlite` to v1.48.2 _(vfs and other error path related fixes)_.
+
+- Updated min Go GitHub action version to 1.26.2 because it comes with some [minor security fixes](https://github.com/golang/go/issues?q=milestone%3AGo1.26.2).
+
+- Other small improvements _(updated `$apis.static` JSVM documentation, fixed comment typos, added missing file close on seek error, etc.)_.
+
+
+## v0.36.8
+
+- Fixed OAuth2 client secret reset when serializing a cached collection model.
+
+- Bumped all Go and npm deps.
+    _This should also silence recent spam reports and security scanners regarding `golang.org/x/image` [CVE-2026-33809](https://www.cve.org/CVERecord?id=CVE-2026-33809) (it is not an issue in PocketBase because we don't support TIFF thumbs)._
+
+
+## v0.36.7
+
+- Fixed high memory usage with large file uploads ([#7572](https://github.com/pocketbase/pocketbase/discussions/7572)).
+
+- Updated the rate limiter reset rules to follow a more traditional fixed window strategy _(aka. to be more close to how it is presented in the UI - allow max X user requests under Ys)_ since several users complained that the older algorithm was not intuitive and not suitable for large intervals.
+    _Approximated sliding window strategy was also suggested as a better compromise option to help minimize traffic spikes right after reset but the additional tracking could introduce some overhead and for now it is left aside until we have more tests._
+
+- Updated `modernc.org/sqlite` to v1.46.2 and SQLite 3.51.3.
+    _⚠️ SQLite 3.51.3 fixed a [database corruption bug](https://sqlite.org/wal.html#walresetbug) that is very unlikely to happen (with PocketBase even more so because we queue on app level all writes and explicit transactions through a single db connection), but still it is advised to upgrade._
+
+- Updated other minor Go and npm deps.
+    _The min Go version in the go.mod of the package was also bumped to Go 1.25.0 because some of the newer dep versions require it._
+
+
+## v0.36.6
 
 - Set `NumberField.OnlyInt:true` for the generated View collection schema fields when a view column expression is known to return int-only values ([#7538](https://github.com/pocketbase/pocketbase/issues/7538)).
 
 - Documented the `unmarshal` JSVM helper ([#7543](https://github.com/pocketbase/pocketbase/issues/7543)).
 
-- Added extra existence check after the `Store.GetOrSet` write lock to prevent races overwriting an already existing value.
+- Added extra read check after the `Store.GetOrSet` write lock to prevent races overwriting an already existing value.
 
-- (@todo) Bumped min Go GitHub action version to 1.26.1 because it comes with some [security fixes](https://github.com/golang/go/issues?q=milestone%3AGo1.26.1).
+- Added empty records check for the additional client-side filter's ListRule constraint that was introduced in v0.32.0 ([presentator#206](https://github.com/presentator/presentator/issues/206)).
+
+- Set a fixed `routine.FireAndForget()` debug stack trace limit to 2KB.
+
+- Bumped min Go GitHub action version to 1.26.1 because it comes with some [minor bug and security fixes](https://github.com/golang/go/issues?q=milestone%3AGo1.26.1).
+
+- Typos and other minor doc fixes.
 
 
 ## v0.36.5
@@ -643,7 +827,7 @@ and the minor performance boost that you may get when used on large records is n
 
 - Eagerly interrupt waiting for the email alert send in case it takes longer than 15s.
 
-- Normalized the hidden fields filter checks and allow targetting hidden fields in the List API rule.
+- Normalized the hidden fields filter checks and allow targeting hidden fields in the List API rule.
 
 - Fixed "Unique identify fields" input not refreshing on unique indexes change ([#6184](https://github.com/pocketbase/pocketbase/issues/6184)).
 
@@ -735,7 +919,7 @@ and the minor performance boost that you may get when used on large records is n
 - Added support for passing more than one id in the `Hook.Unbind` method for consistency with the router.
 
 - Added collection rules change list in the confirmation popup
-  (_to avoid getting anoying during development, the rules confirmation currently is enabled only when using https_).
+  (_to avoid getting annoying during development, the rules confirmation currently is enabled only when using https_).
 
 
 ## v0.23.1
@@ -778,7 +962,7 @@ There are a lot of changes but to highlight some of the most notable ones:
 - Option to specify custom `DBConnect` function as part of the app configuration to allow different `database/sql` SQLite drivers (_turso/libsql, sqlcipher, etc._) and custom builds.
   _Note that we no longer loads the `mattn/go-sqlite3` driver by default when building with `CGO_ENABLED=1` to avoid `multiple definition` linker errors in case different CGO SQLite drivers or builds are used. You can find an example how to enable it back if you want to in the [new documentation](https://pocketbase.io/docs/go-overview/#github-commattngo-sqlite3)._
 - New hooks allowing better control over the execution chain and error handling (_including wrapping an entire hook chain in a single DB transaction_).
-- Various `Record` model improvements (_support for get/set modifiers, simplfied file upload by treating the file(s) as regular field value like `record.Set("document", file)`, etc._).
+- Various `Record` model improvements (_support for get/set modifiers, simplified file upload by treating the file(s) as regular field value like `record.Set("document", file)`, etc._).
 - Dedicated fields structs with safer defaults to make it easier creating/updating collections programmatically.
 - Option to mark field as "Hidden", disallowing regular users to read or modify it (_there is also a dedicated Record hook to hide/unhide Record fields programmatically from a single place_).
 - Option to customize the default system collection fields (`id`, `email`, `password`, etc.).
