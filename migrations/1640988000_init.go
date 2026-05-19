@@ -1,6 +1,8 @@
 package migrations
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"runtime"
@@ -309,6 +311,18 @@ func dmCreateIndexIfMissing(db dbx.Builder, tableName string, indexName string, 
 	return err
 }
 
+func saveCollectionIfMissing(txApp core.App, col *core.Collection) error {
+	_, err := txApp.FindCollectionByNameOrId(col.Name)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+
+	return txApp.Save(col)
+}
+
 func createMFAsCollection(txApp core.App) error {
 	col := core.NewBaseCollection(core.CollectionNameMFAs)
 	col.System = true
@@ -345,7 +359,7 @@ func createMFAsCollection(txApp core.App) error {
 	})
 	col.AddIndex("idx_mfas_collectionRef_recordRef", false, "collectionRef,recordRef", "")
 
-	return txApp.Save(col)
+	return saveCollectionIfMissing(txApp, col)
 }
 
 func createOTPsCollection(txApp core.App) error {
@@ -391,7 +405,7 @@ func createOTPsCollection(txApp core.App) error {
 	})
 	col.AddIndex("idx_otps_collectionRef_recordRef", false, "collectionRef, recordRef", "")
 
-	return txApp.Save(col)
+	return saveCollectionIfMissing(txApp, col)
 }
 
 func createAuthOriginsCollection(txApp core.App) error {
@@ -431,7 +445,7 @@ func createAuthOriginsCollection(txApp core.App) error {
 	})
 	col.AddIndex("idx_authOrigins_unique_pairs", true, "collectionRef, recordRef, fingerprint", "")
 
-	return txApp.Save(col)
+	return saveCollectionIfMissing(txApp, col)
 }
 
 func createExternalAuthsCollection(txApp core.App) error {
@@ -477,7 +491,7 @@ func createExternalAuthsCollection(txApp core.App) error {
 	col.AddIndex("idx_externalAuths_record_provider", true, "collectionRef, recordRef, provider", "")
 	col.AddIndex("idx_externalAuths_collection_provider", true, "collectionRef, provider, providerId", "")
 
-	return txApp.Save(col)
+	return saveCollectionIfMissing(txApp, col)
 }
 
 func createSuperusersCollection(txApp core.App) error {
@@ -501,7 +515,7 @@ func createSuperusersCollection(txApp core.App) error {
 	})
 	superusers.AuthToken.Duration = 86400 // 1 day
 
-	return txApp.Save(superusers)
+	return saveCollectionIfMissing(txApp, superusers)
 }
 
 func createUsersCollection(txApp core.App) error {
@@ -535,5 +549,5 @@ func createUsersCollection(txApp core.App) error {
 	users.OAuth2.MappedFields.Name = "name"
 	users.OAuth2.MappedFields.AvatarURL = "avatar"
 
-	return txApp.Save(users)
+	return saveCollectionIfMissing(txApp, users)
 }
