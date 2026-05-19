@@ -261,22 +261,30 @@ func dmTableExists(txApp core.App, tableName string) (bool, error) {
 }
 
 func dmIndexExists(db dbx.Builder, tableName string, indexName string) (bool, error) {
-	// a reliable way to check for index existence in DM is to use SYSOBJECTS or just try to create it and ignore error,
-	// but here we can use a query to ALL_INDEXES without the restrictive OWNER filter if needed, 
-	// or just trust HasTable for tables and use a similar dummy query for indexes? 
-	// Actually, DM doesn't have an easy way to "query" an index.
-	// Let's use SYSOBJECTS which is more global.
 	var count int
 	err := db.NewQuery(`
 		SELECT COUNT(1)
-		FROM SYSOBJECTS
-		WHERE TYPE$ = 'INDEX'
-		  AND UPPER(NAME) = UPPER({:indexName})
+		FROM ALL_INDEXES
+		WHERE OWNER = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')
+		  AND UPPER(TABLE_NAME) = UPPER({:tableName})
+		  AND UPPER(INDEX_NAME) = UPPER({:indexName})
 	`).Bind(dbx.Params{
+		"tableName": tableName,
 		"indexName": indexName,
 	}).Row(&count)
 
 	return count > 0, err
+}
+
+func dmIsIndexAlreadyExistsError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "已存在") ||
+		strings.Contains(msg, "already exists") ||
+		strings.Contains(msg, "already exist")
 }
 
 func dmCreateIndexIfMissing(db dbx.Builder, tableName string, indexName string, query string) error {
@@ -289,6 +297,15 @@ func dmCreateIndexIfMissing(db dbx.Builder, tableName string, indexName string, 
 	}
 
 	_, err = db.NewQuery(query).Execute()
+	if dmIsIndexAlreadyExistsError(err) {
+		exists, existsErr := dmIndexExists(db, tableName, indexName)
+		if existsErr != nil {
+			return existsErr
+		}
+		if exists {
+			return nil
+		}
+	}
 	return err
 }
 

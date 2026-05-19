@@ -408,10 +408,12 @@ func dmIndexExists(db dbx.Builder, tableName string, indexName string) (bool, er
 	var count int
 	err := db.NewQuery(`
 		SELECT COUNT(1)
-		FROM SYSOBJECTS
-		WHERE TYPE$ = 'INDEX'
-		  AND UPPER(NAME) = UPPER({:indexName})
+		FROM ALL_INDEXES
+		WHERE OWNER = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')
+		  AND UPPER(TABLE_NAME) = UPPER({:tableName})
+		  AND UPPER(INDEX_NAME) = UPPER({:indexName})
 	`).Bind(dbx.Params{
+		"tableName": tableName,
 		"indexName": indexName,
 	}).Row(&count)
 
